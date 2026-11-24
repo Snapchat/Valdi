@@ -1,3 +1,4 @@
+#import "valdi_core/SCValdiBigInt.h"
 //
 //  SCValdiMarshaller.m
 //  valdi-ios
@@ -254,6 +255,20 @@ FOUNDATION_EXPORT NSInteger SCValdiMarshallerPushUntyped(SCValdiMarshallerRef ma
 FOUNDATION_EXPORT NSInteger SCValdiMarshallerPushInt(SCValdiMarshallerRef marshaller, int32_t i)
 {
     return SCValdiMarshallerUnwrap(marshaller)->pushInt(i);
+}
+
+FOUNDATION_EXPORT NSInteger SCValdiMarshallerPushBigInt(SCValdiMarshallerRef marshaller, SCValdiBigInt* value) {
+    return SCValdiMarshallerUnwrap(marshaller)->push(Valdi::Value(Valdi::unsafeBridge<Valdi::BigInt>([value bigInt])));
+}
+
+FOUNDATION_EXPORT SCValdiBigInt* SCValdiMarshallerGetBigInt(SCValdiMarshallerRef marshaller, NSInteger index) {
+    auto* native = SCValdiMarshallerUnwrap(marshaller);
+    auto value = SCValdiMarshallerGetValue(marshaller, index)
+                     .checkedTo<Valdi::Ref<Valdi::BigInt>>(native->getExceptionTracker());
+    if (value == nullptr) {
+        return nil;
+    }
+    return [[SCValdiBigInt alloc] initWithBigInt:Valdi::unsafeBridgeCast(value.get())];
 }
 
 FOUNDATION_EXPORT NSInteger SCValdiMarshallerPushLong(SCValdiMarshallerRef marshaller, int64_t i)

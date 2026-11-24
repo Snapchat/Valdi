@@ -350,6 +350,8 @@ final class TypeScriptNativeTypeExporter {
         let typeName = type.name
         if typeName == "string" {
             return .string
+        } else if typeName == "bigint" {
+            return .bigInt
         } else if typeName == "number" {
             return .double
         } else if typeName == "boolean" {

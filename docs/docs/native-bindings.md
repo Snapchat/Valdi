@@ -264,7 +264,10 @@ This section documents all TypeScript types that can be marshalled between TypeS
 |----------------|---------|------------------|
 | `Uint8Array` | Binary data | `Data` (iOS) / `ByteArray` (Android) |
 | `Long` | 64-bit integers | `int64_t` / `Long` |
+| `bigint` | Arbitrary precision integers | `SCValdiBigInt` / `com.snap.valdi.BigInt` |
 | `Number` | Explicit double | Same as `number` but explicit |
+
+> **Note:** On Apple platforms, `bigint` bindings with JavaScriptCore require iOS 18 or later or macOS 15 or later.
 
 ### Generated Types
 
@@ -446,7 +449,7 @@ interface Data {
 }
 ```
 
-> **Warning:** JavaScript numbers can only precisely represent integers up to 2^53 - 1. For larger integers, use `Long` type or string representation.
+> **Warning:** JavaScript numbers can only precisely represent integers up to 2^53 - 1. For larger integers, use `bigint` for arbitrary precision, or `Long` for the existing 64-bit wrapper. `bigint` bindings with JavaScriptCore require iOS 18+ or macOS 15+.
 
 ### Array Conversion
 

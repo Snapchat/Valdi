@@ -8395,6 +8395,69 @@ TEST_P(RuntimeFixture, registeredSchemaReturnsValidSchema) {
     ASSERT_EQ(funcSchema->getParametersSize(), 0u);
 }
 
+// Probes the runtime's own context: destroying a second JSCore context on Linux
+// resets the process-wide run loop callback that this runtime registered.
+static bool runtimeSupportsNativeBigInt(RuntimeWrapper& wrapper) {
+    auto supported = false;
+    wrapper.runtime->getJavaScriptRuntime()->dispatchSynchronouslyOnJsThread(
+        STRING_LITERAL("test.bigint"), [&](auto& jsEntry) {
+            jsEntry.jsContext.newBigInt(*BigInt::make(int64_t(0)), jsEntry.exceptionTracker);
+            supported = static_cast<bool>(jsEntry.exceptionTracker);
+            jsEntry.exceptionTracker.clearError();
+        });
+    return supported;
+}
+
+TEST_P(RuntimeFixture, supportsBigIntNativeRoundTrips) {
+    if (isJSCore() && !runtimeSupportsNativeBigInt(wrapper)) {
+        GTEST_SKIP() << "JavaScriptCore in this build has no native BigInt APIs";
+    }
+    SimpleExceptionTracker tracker;
+    auto integer = BigInt::make("18446744073709551616", tracker);
+    auto echo = callFunctionSync(wrapper, "test/src/BigIntTest", "echo", {Value(integer)});
+    ASSERT_TRUE(echo) << echo.description();
+    ASSERT_TRUE(echo.value().isBigInt());
+    EXPECT_EQ(Value(integer), echo.value());
+    auto sum = callFunctionSync(wrapper, "test/src/BigIntTest", "add", {Value(integer), Value(BigInt::make(1))});
+    ASSERT_TRUE(sum) << sum.description();
+    EXPECT_EQ("18446744073709551617", sum.value().toString());
+    auto model = callFunctionSync(wrapper, "test/src/BigIntTest", "getModel", {});
+    ASSERT_TRUE(model) << model.description();
+    EXPECT_EQ(Value(integer), model.value().getMapValue("value"));
+}
+
+TEST_P(RuntimeFixture, supportsTypedBigIntModel) {
+    if (isJSCore() && !runtimeSupportsNativeBigInt(wrapper)) {
+        GTEST_SKIP() << "JavaScriptCore in this build has no native BigInt APIs";
+    }
+    SimpleExceptionTracker tracker;
+    auto modelSchema = BigIntModel::getRegisteredClass()->getResolvedSchema(tracker);
+    ASSERT_TRUE(tracker);
+    auto schema =
+        ValueSchema::cls(STRING_LITERAL("BigIntTestModule"),
+                         false,
+                         {
+                             ClassPropertySchema(STRING_LITERAL("getModel"), ValueSchema::function(modelSchema, {})),
+                         });
+    auto module = getJsModuleWithSchema(wrapper.runtime, nullptr, nullptr, "test/src/BigIntTest", schema);
+    ASSERT_TRUE(module) << module.description();
+    const auto callFlags =
+        static_cast<ValueFunctionFlags>(ValueFunctionFlagsCallSync | ValueFunctionFlagsPropagatesError);
+    auto result = module.value().getTypedObject()->getProperty(0).getFunction()->call(callFlags, {});
+    ASSERT_TRUE(result) << result.description();
+    BigIntModel model;
+    BigIntModel::unmarshall(tracker, result.value(), model);
+    ASSERT_TRUE(tracker);
+    EXPECT_EQ("18446744073709551616", model.getValue()->toString());
+    EXPECT_EQ(nullptr, model.getOptional());
+    ASSERT_EQ(2u, model.getValues().size());
+    EXPECT_EQ("-18446744073709551616", model.getValues()[1]->toString());
+    EXPECT_EQ("18446744073709551616", model.getEcho()(model.getValue())->toString());
+    auto promise = model.getPromise().get();
+    ASSERT_TRUE(promise) << promise.description();
+    EXPECT_EQ("18446744073709551616", promise.value()->toString());
+}
+
 TEST_P(RuntimeFixture, supportsLongObject) {
     auto parseResult =
         callFunctionSync(wrapper, "test/src/LongTest", "parse", {Value(STRING_LITERAL("3670116110564327421"))});

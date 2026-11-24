@@ -59,6 +59,9 @@ std::string valueTypeToString(ValueType weakValueType) {
         case ValueType::Long: {
             return "long";
         }
+        case ValueType::BigInt: {
+            return "bigint";
+        }
         case ValueType::Double: {
             return "double";
         }
@@ -121,6 +124,8 @@ Value::Value(int32_t anInt) noexcept : _type(ValueType::Int) {
 Value::Value(int64_t aLong) noexcept : _type(ValueType::Long) {
     _data.l = aLong;
 }
+
+Value::Value(const Ref<BigInt>& value) noexcept : Value(value.get(), ValueType::BigInt) {}
 
 Value::Value(double aDouble) noexcept : _type(ValueType::Double) {
     _data.d = aDouble;
@@ -296,6 +301,8 @@ bool Value::operator==(const Value& other) const noexcept {
             return _data.i == other._data.i;
         case ValueType::Long:
             return _data.l == other._data.l;
+        case ValueType::BigInt:
+            return *getBigInt() == *other.getBigInt();
         case ValueType::Double:
             return _data.d == other._data.d;
         case ValueType::Bool:
@@ -324,6 +331,9 @@ bool Value::operator!=(const Value& other) const noexcept {
 }
 
 bool Value::operator<(const Value& other) const noexcept {
+    if (_type != other._type && (isBigInt() || other.isBigInt())) {
+        return _type < other._type;
+    }
     // TODO(simon): Implementation is incomplete
     switch (_type) {
         case ValueType::Null:
@@ -338,6 +348,8 @@ bool Value::operator<(const Value& other) const noexcept {
             return toInt() < other.toInt();
         case ValueType::Long:
             return toLong() < other.toLong();
+        case ValueType::BigInt:
+            return *getBigInt() < *other.getBigInt();
         case ValueType::Double:
             return toDouble() < other.toDouble();
         case ValueType::Bool:
@@ -534,6 +546,8 @@ std::vector<StringBox> Value::sortedMapKeys() const {
 
 bool Value::toBool() const noexcept {
     switch (getType()) {
+        case ValueType::BigInt:
+            return getBigInt()->toInt64() != std::optional<int64_t>(0);
         case ValueType::Bool:
             return _data.b;
         case ValueType::Int:
@@ -570,6 +584,8 @@ std::string Value::toString(bool indent) const {
             return std::to_string(toInt());
         case ValueType::Long:
             return std::to_string(toLong());
+        case ValueType::BigInt:
+            return getBigInt()->toString();
         case ValueType::Double:
             return std::to_string(toDouble());
         case ValueType::Bool:
@@ -799,6 +815,18 @@ bool Value::isInt() const noexcept {
     return _type == ValueType::Int;
 }
 
+bool Value::isBigInt() const noexcept {
+    return _type == ValueType::BigInt;
+}
+
+const BigInt* Value::getBigInt() const noexcept {
+    return isBigInt() ? toPointer<BigInt>() : nullptr;
+}
+
+Ref<BigInt> Value::getBigIntRef() const noexcept {
+    return isBigInt() ? getUnsafeTypedRefPointer<BigInt>() : nullptr;
+}
+
 bool Value::isLong() const noexcept {
     return _type == ValueType::Long;
 }
@@ -861,6 +889,8 @@ size_t Value::hash() const {
             return static_cast<size_t>(toInt());
         case ValueType::Long:
             return static_cast<size_t>(toLong());
+        case ValueType::BigInt:
+            return getBigInt()->hash();
         case ValueType::Double:
             return static_cast<size_t>(toDouble());
         case ValueType::Bool:
@@ -1007,6 +1037,15 @@ int32_t Value::checkedTo(ExceptionTracker& exceptionTracker) const {
     }
 
     return toInt();
+}
+
+template<>
+Ref<BigInt> Value::checkedTo(ExceptionTracker& exceptionTracker) const {
+    if (!isBigInt()) {
+        exceptionTracker.onError(invalidTypeError(ValueType::BigInt, getType()));
+        return nullptr;
+    }
+    return getBigIntRef();
 }
 
 template<>

@@ -63,6 +63,8 @@ static SCValdiFieldValueDescriptor SCValdiFieldValueDescriptorFromSchema(const V
 
     if (schema.isUntyped()) {
         descriptor.type = SCValdiFieldValueTypeObject;
+    } else if (schema.isBigInt()) {
+        descriptor.type = SCValdiFieldValueTypeObject;
     } else if (schema.isString()) {
         descriptor.type = SCValdiFieldValueTypeObject;
         descriptor.isCopyable = YES;

@@ -1,4 +1,5 @@
 load("@bazel_skylib//lib:selects.bzl", "selects")
+load("@build_bazel_rules_apple//apple:ios.bzl", "ios_unit_test")
 load("@build_bazel_rules_swift//swift:swift.bzl", "swift_interop_hint", "swift_library")
 load("@rules_android//rules:rules.bzl", "android_library")
 load("@rules_hdrs//umbrella_header:umbrella_header.bzl", "umbrella_header")
@@ -239,6 +240,7 @@ MAC_OS_DEPENDENCIES = glob([
     "src/valdi_core/ios/**/SCValdiFunctionWithBlock.mm",
     "src/valdi_core/ios/**/SCValdiFunction.m",
     "src/valdi_core/ios/**/SCValdiInternedString.mm",
+    "src/valdi_core/ios/**/SCValdiBigInt.mm",
     "src/valdi_core/ios/**/ValueFunctionWithSCValdiFunction.mm",
     "src/valdi_core/ios/**/SCValdiMarshallableObjectDescriptor.m",
 ])
@@ -423,4 +425,35 @@ generate_djinni_compat_target(
 generate_djinni_compat_target(
     source_target = "valdi_core_objc",
     target = "objc",
+)
+
+objc_library(
+    name = "bigint_objc_tests_lib",
+    testonly = True,
+    srcs = ["test/apple/SCValdiBigIntTests.mm"],
+    copts = OBJC_FLAGS + COMPILER_FLAGS,
+    target_compatible_with = ["@platforms//os:ios"],
+    deps = [":valdi_core"],
+)
+
+swift_library(
+    name = "bigint_swift_tests_lib",
+    testonly = True,
+    srcs = ["test/apple/BigIntTests.swift"],
+    module_name = "ValdiBigIntTests",
+    target_compatible_with = ["@platforms//os:ios"],
+    deps = [
+        ":valdi_core",
+        ":valdi_core_swift_marshaller",
+    ],
+)
+
+ios_unit_test(
+    name = "bigint_ios_test",
+    minimum_os_version = "18.0",
+    runner = "@build_bazel_rules_apple//apple/testing/default_runner:ios_xctestrun_ordered_runner",
+    deps = [
+        ":bigint_objc_tests_lib",
+        ":bigint_swift_tests_lib",
+    ],
 )

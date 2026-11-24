@@ -98,6 +98,10 @@ private:
      'long', 'l'
      A 64 bits integer type
 
+   BigInt:
+     'bigint', 'B'
+     An arbitrary precision integer, distinct from number and LongInteger
+
    Double:
      'double', 'd'
      A 64 bits double precision floating type
@@ -203,6 +207,7 @@ public:
     bool isString() const;
     bool isInteger() const;
     bool isLongInteger() const;
+    bool isBigInt() const;
     bool isDouble() const;
     bool isBoolean() const;
     bool isFunction() const;
@@ -253,6 +258,7 @@ public:
     static ValueSchema voidType();
     static ValueSchema integer();
     static ValueSchema longInteger();
+    static ValueSchema bigInt();
     static ValueSchema doublePrecision();
     static ValueSchema boolean();
     static ValueSchema string();
@@ -388,6 +394,7 @@ private:
         ValueSchemaInnerTypeOutcome,
         ValueSchemaInnerTypeDate,
         ValueSchemaInnerTypeProto,
+        ValueSchemaInnerTypeBigInt,
     };
 
     ValueSchema(ValueSchemaInnerType type, uint8_t flags, uint8_t typeReferenceFlags, Ref<RefCountable> ptr);

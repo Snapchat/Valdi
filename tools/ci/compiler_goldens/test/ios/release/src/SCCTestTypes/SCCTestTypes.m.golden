@@ -19,6 +19,44 @@ NSArray<NSNumber *> * _Nonnull SCCTestCalculatorToStringFormatGetAllCases() {
 }
 
 //
+// SCBigIntModel.m
+//
+
+#import <valdi_core/SCValdiBuiltinTrampolines.h>
+#import <valdi_core/SCValdiMarshallableObjectDescriptor.h>
+
+#import "SCCTestTypes.h"
+
+@implementation SCBigIntModel
+
+@dynamic value;
+@dynamic optional;
+@dynamic values;
+@dynamic echo;
+@dynamic promise;
+
+- (instancetype _Nonnull)initWithValue:(SCValdiBigInt * _Nonnull)value values:(NSArray<SCValdiBigInt *> * _Nonnull)values echo:(SCBigIntModelEchoBlock _Nonnull)echo promise:(SCValdiPromise<SCValdiBigInt *> * _Nonnull)promise
+{
+    return [super initWithFieldValues:nil, value, nil, values, echo, promise];
+}
+
++ (SCValdiMarshallableObjectDescriptor)valdiMarshallableObjectDescriptor
+{
+    static const SCValdiMarshallableObjectFieldDescriptor kFields[] = {
+        {.name = "value", .selName = nil, .type = "B"},
+        {.name = "optional", .selName = nil, .type = "B?"},
+        {.name = "values", .selName = nil, .type = "a<B>"},
+        {.name = "echo", .selName = nil, .type = "f(B): B"},
+        {.name = "promise", .selName = nil, .type = "p<B>"},
+        {.name = nil},
+    };
+    return SCValdiMarshallableObjectDescriptorMake(kFields, nil, nil, SCValdiMarshallableObjectTypeClass);
+}
+
+@end
+
+
+//
 // SCCTestMakeCalculator.m
 //
 

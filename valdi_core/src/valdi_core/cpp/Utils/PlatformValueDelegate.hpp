@@ -267,6 +267,9 @@ public:
     virtual ValueType newInt(int32_t value, ExceptionTracker& exceptionTracker) = 0;
     virtual ValueType newIntObject(int32_t value, ExceptionTracker& exceptionTracker) = 0;
 
+    virtual ValueType newBigInt(const Ref<BigInt>& value, ExceptionTracker& exceptionTracker) = 0;
+    virtual Ref<BigInt> valueToBigInt(const ValueType& value, ExceptionTracker& exceptionTracker) const = 0;
+
     virtual ValueType newLong(int64_t value, ExceptionTracker& exceptionTracker) = 0;
     virtual ValueType newLongObject(int64_t value, ExceptionTracker& exceptionTracker) = 0;
 

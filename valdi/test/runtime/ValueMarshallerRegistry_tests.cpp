@@ -544,6 +544,14 @@ private:
 
 class TestPlatformValueDelegate : public PlatformValueDelegate<Value> {
 public:
+    Value newBigInt(const Ref<BigInt>& value, ExceptionTracker&) final {
+        return Value(value);
+    }
+
+    Ref<BigInt> valueToBigInt(const Value& value, ExceptionTracker& tracker) const final {
+        return value.checkedTo<Ref<BigInt>>(tracker);
+    }
+
     Value newVoid() final {
         return Value::undefined();
     }
@@ -1054,8 +1062,8 @@ TEST(ValueMarshallerRegistry, canUnmarshallTypedObjectFromDifferentSchema) {
     // Same class, but registered elsewhere with fewer and reordered properties.
     auto otherSchema = ValueSchema::parse("c 'MyObject'{'aDouble': d, 'aString': s}");
     ASSERT_TRUE(otherSchema) << otherSchema.description();
-    auto object = Value(ValueTypedObject::make(otherSchema.value().getClassRef(),
-                                               {Value(42.0), Value(STRING_LITERAL("Hello world"))}));
+    auto object = Value(
+        ValueTypedObject::make(otherSchema.value().getClassRef(), {Value(42.0), Value(STRING_LITERAL("Hello world"))}));
 
     SimpleExceptionTracker exceptionTracker;
     auto result = valueMarshallerRegistry->unmarshall(identifier, object, exceptionTracker);

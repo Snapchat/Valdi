@@ -1,3 +1,4 @@
+#import "valdi_core/SCValdiBigInt.h"
 //
 //  SCValdiObjCValueDelegate.m
 //  valdi_core-ios
@@ -442,6 +443,21 @@ ObjCValueDelegate::~ObjCValueDelegate() = default;
 
     ObjCValue ObjCValueDelegate::newIntObject(int32_t value, Valdi::ExceptionTracker &exceptionTracker) {
         return ObjCValue::makeObject(@(value));
+    }
+
+    ObjCValue ObjCValueDelegate::newBigInt(const Valdi::Ref<Valdi::BigInt>& value,
+                                           Valdi::ExceptionTracker& exceptionTracker) {
+        return ObjCValue::makeObject([[SCValdiBigInt alloc] initWithBigInt:Valdi::unsafeBridgeCast(value.get())]);
+    }
+
+    Valdi::Ref<Valdi::BigInt> ObjCValueDelegate::valueToBigInt(const ObjCValue& value,
+                                                               Valdi::ExceptionTracker& exceptionTracker) const {
+        id object = value.getObject();
+        if (![object isKindOfClass:[SCValdiBigInt class]]) {
+            exceptionTracker.onError("Expected SCValdiBigInt");
+            return nullptr;
+        }
+        return Valdi::unsafeBridge<Valdi::BigInt>([(SCValdiBigInt*)object bigInt]);
     }
 
     ObjCValue ObjCValueDelegate::newLong(int64_t value, Valdi::ExceptionTracker &exceptionTracker) {

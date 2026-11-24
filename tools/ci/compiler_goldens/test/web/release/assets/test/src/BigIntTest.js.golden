@@ -1,0 +1,19 @@
+module.path = "test/src/BigIntTest";
+"use strict";
+/// <reference lib="es2020.bigint" />
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.add = exports.echo = exports.getModel = void 0;
+/** @Version(__PLACEHOLDER__) */
+function getModel() {
+    const value = BigInt('18446744073709551616');
+    return { value, values: [value, -value], echo: input => input, promise: Promise.resolve(value) };
+}
+exports.getModel = getModel;
+function echo(value) {
+    return value;
+}
+exports.echo = echo;
+function add(left, right) {
+    return left + right;
+}
+exports.add = add;

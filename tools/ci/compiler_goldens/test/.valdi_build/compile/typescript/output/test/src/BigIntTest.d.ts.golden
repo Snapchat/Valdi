@@ -1,0 +1,16 @@
+/// <reference lib="es2020.bigint" />
+/**
+ * @ExportModel({ios: 'SCBigIntModel', android: 'com.snap.modules.test.BigIntModel', cpp: 'ValdiTest::BigIntModel'})
+ * @Version(__PLACEHOLDER__)
+ */
+export interface BigIntModel {
+    value: bigint;
+    optional?: bigint;
+    values: bigint[];
+    echo: (value: bigint) => bigint;
+    promise: Promise<bigint>;
+}
+/** @Version(__PLACEHOLDER__) */
+export declare function getModel(): BigIntModel;
+export declare function echo(value: bigint): bigint;
+export declare function add(left: bigint, right: bigint): bigint;

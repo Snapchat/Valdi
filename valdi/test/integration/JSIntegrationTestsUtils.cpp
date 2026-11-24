@@ -1,4 +1,5 @@
 #include "JSIntegrationTestsUtils.hpp"
+#include "valdi_core/cpp/Utils/BigInt.hpp"
 
 using namespace Valdi;
 
@@ -18,6 +19,17 @@ Valdi::Result<Valdi::Value> callFunction(const Ref<ValueFunction>& function, con
 
 Valdi::Result<Valdi::Value> callFunction(const Ref<ValueFunction>& function) {
     return callFunction(function, {});
+}
+
+bool jsBridgeSupportsNativeBigInt(IJavaScriptBridge* jsBridge) {
+    JSContextWrapper wrapper(jsBridge, nullptr);
+    auto supported = false;
+    wrapper.withContext([&](IJavaScriptContext& context, JSExceptionTracker& tracker) {
+        context.newBigInt(*BigInt::make(int64_t(0)), tracker);
+        supported = static_cast<bool>(tracker);
+        tracker.clearError();
+    });
+    return supported;
 }
 
 } // namespace ValdiTest

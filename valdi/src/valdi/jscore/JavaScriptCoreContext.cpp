@@ -31,6 +31,13 @@
 
 #include <sstream>
 
+#if (TARGET_OS_IPHONE && __IPHONE_OS_VERSION_MAX_ALLOWED >= 180000) ||                                                 \
+    (TARGET_OS_OSX && __MAC_OS_X_VERSION_MAX_ALLOWED >= 150000)
+#define VALDI_JSCORE_HAS_BIGINT_API 1
+#else
+#define VALDI_JSCORE_HAS_BIGINT_API 0
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -402,6 +409,60 @@ Valdi::JSValueRef JavaScriptCoreContext::onNewNumber(int32_t number) {
 Valdi::JSValueRef JavaScriptCoreContext::onNewNumber(double number) {
     auto context = getJSGlobalContext();
     return returnJSValueRef(JSValueMakeNumber(context, number), kJSTypeNumber);
+}
+
+Valdi::JSValueRef JavaScriptCoreContext::newBigInt(const Valdi::BigInt& value,
+                                                   Valdi::JSExceptionTracker& exceptionTracker) {
+#if VALDI_JSCORE_HAS_BIGINT_API
+    if (__builtin_available(macOS 15.0, iOS 18.0, *)) {
+        ::JSValueRef exception = nullptr;
+        if (auto small = value.toInt64()) {
+            auto result = JSBigIntCreateWithInt64(getJSGlobalContext(), *small, &exception);
+            return checkCallAndGetValue(exceptionTracker, result, exception);
+        }
+        auto string = JSStringCreateWithUTF8CString(value.toString().c_str());
+        auto result = JSBigIntCreateWithString(getJSGlobalContext(), string, &exception);
+        JSStringRelease(string);
+        return checkCallAndGetValue(exceptionTracker, result, exception);
+    }
+#endif
+    exceptionTracker.onError("BigInt requires JavaScriptCore with native BigInt APIs");
+    return {};
+}
+
+Valdi::Ref<Valdi::BigInt> JavaScriptCoreContext::valueToBigInt(const Valdi::JSValue& value,
+                                                               Valdi::JSExceptionTracker& exceptionTracker) {
+#if VALDI_JSCORE_HAS_BIGINT_API
+    if (__builtin_available(macOS 15.0, iOS 18.0, *)) {
+        auto jsCoreValue = fromValdiJSValue(value);
+        if (jsCoreValue.type != kJSTypeBigInt) {
+            exceptionTracker.onError("Expected bigint");
+            return nullptr;
+        }
+        ::JSValueRef exception = nullptr;
+        auto small = JSValueToInt64(getJSGlobalContext(), jsCoreValue.valueRef, &exception);
+        if (exception != nullptr) {
+            storeException(exceptionTracker, exception);
+            return nullptr;
+        }
+        // JSValueToInt64 truncates; only use it when the native exact comparison agrees.
+        auto relation = JSValueCompareInt64(getJSGlobalContext(), jsCoreValue.valueRef, small, &exception);
+        if (exception != nullptr) {
+            storeException(exceptionTracker, exception);
+            return nullptr;
+        }
+        if (relation == kJSRelationConditionEqual) {
+            return Valdi::BigInt::make(small);
+        }
+        auto decimal = valueToString(value, exceptionTracker);
+        if (!exceptionTracker) {
+            return nullptr;
+        }
+        return Valdi::BigInt::make(decimal.toStringView(), exceptionTracker);
+    }
+#endif
+    exceptionTracker.onError("BigInt requires JavaScriptCore with native BigInt APIs");
+    return nullptr;
 }
 
 Valdi::JSValueRef JavaScriptCoreContext::newStringUTF8(const std::string_view& str,
@@ -826,8 +887,18 @@ bool JavaScriptCoreContext::valueToBool(const Valdi::JSValue& value, Valdi::JSEx
 }
 
 double JavaScriptCoreContext::valueToDouble(const Valdi::JSValue& value, Valdi::JSExceptionTracker& exceptionTracker) {
+    auto jsCoreValue = fromValdiJSValue(value);
+#if VALDI_JSCORE_HAS_BIGINT_API
+    switch (jsCoreValue.type) {
+        case kJSTypeBigInt:
+            exceptionTracker.onError("Cannot convert bigint to a number");
+            return 0.0;
+        default:
+            break;
+    }
+#endif
     JSValueRef exception = nullptr;
-    auto number = JSValueToNumber(getJSGlobalContext(), fromValdiJSValue(value).valueRef, &exception);
+    auto number = JSValueToNumber(getJSGlobalContext(), jsCoreValue.valueRef, &exception);
     if (exception != nullptr) {
         storeException(exceptionTracker, exception);
         return 0.0;
@@ -1028,10 +1099,14 @@ Valdi::ValueType JavaScriptCoreContext::getValueType(const Valdi::JSValue& value
             return Valdi::ValueType::Map;
         }
         case kJSTypeSymbol:
-#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 180000 || (TARGET_OS_OSX && __MAC_OS_X_VERSION_MAX_ALLOWED >= __MAC_15_0)
-        case kJSTypeBigInt:
-#endif
             return Valdi::ValueType::Undefined;
+#if VALDI_JSCORE_HAS_BIGINT_API
+        case kJSTypeBigInt:
+            if (__builtin_available(macOS 15.0, iOS 18.0, *)) {
+                return Valdi::ValueType::BigInt;
+            }
+            return Valdi::ValueType::Undefined;
+#endif
     }
 }
 

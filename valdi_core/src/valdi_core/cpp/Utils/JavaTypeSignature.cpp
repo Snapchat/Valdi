@@ -38,6 +38,8 @@ std::string getJavaTypeSignatureFromValueSchema(const Valdi::ValueSchema& schema
         } else {
             return kJniSigInt;
         }
+    } else if (schema.isBigInt()) {
+        return JAVA_CLASS("com/snap/valdi/BigInt");
     } else if (schema.isLongInteger()) {
         if (schema.isBoxed()) {
             return JAVA_CLASS("java/lang/Long");

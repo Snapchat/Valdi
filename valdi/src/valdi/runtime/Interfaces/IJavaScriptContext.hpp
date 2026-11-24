@@ -187,6 +187,9 @@ public:
 
     virtual JSValueRef newWeakRef(const JSValue& object, JSExceptionTracker& exceptionTracker) = 0;
 
+    virtual JSValueRef newBigInt(const BigInt& value, JSExceptionTracker& exceptionTracker) = 0;
+    virtual Ref<BigInt> valueToBigInt(const JSValue& value, JSExceptionTracker& exceptionTracker) = 0;
+
     JSValueRef newLong(int64_t value, JSExceptionTracker& exceptionTracker);
 
     JSValueRef newUnsignedLong(uint64_t value, JSExceptionTracker& exceptionTracker);

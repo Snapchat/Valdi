@@ -10,6 +10,7 @@
 #include <chrono>
 #include <future>
 #include <gtest/gtest.h>
+#include <limits>
 #include <thread>
 
 using namespace Valdi;
@@ -28,6 +29,13 @@ namespace ValdiTest {
     do {                                                                                                               \
         if (isHermes()) {                                                                                              \
             GTEST_SKIP() << msg;                                                                                       \
+        }                                                                                                              \
+    } while (false)
+
+#define SKIP_IF_NO_NATIVE_BIGINT()                                                                                     \
+    do {                                                                                                               \
+        if (isJSCore() && !jsBridgeSupportsNativeBigInt(getJsBridge())) {                                              \
+            GTEST_SKIP() << "JavaScriptCore in this build has no native BigInt APIs";                                  \
         }                                                                                                              \
     } while (false)
 
@@ -101,6 +109,113 @@ TEST_P(JSContextFixture, canRetrieveNumbers) {
     ASSERT_DOUBLE_EQ(42.0, value1.toDouble());
     ASSERT_DOUBLE_EQ(120.5, value2.toDouble());
     ASSERT_DOUBLE_EQ(-999999, value3.toDouble());
+}
+
+TEST_P(JSContextFixture, bigintRoundTripPreservesPrecision) {
+    MAIN_THREAD_INIT();
+    SKIP_IF_NO_NATIVE_BIGINT();
+    auto wrapper = createWrapper();
+    for (const auto* decimal : {"0",
+                                "-1",
+                                "9007199254740993",
+                                "9223372036854775807",
+                                "-9223372036854775808",
+                                "9223372036854775808",
+                                "-9223372036854775809",
+                                "18446744073709551616",
+                                "12345678901234567890123456789012345678901234567890"}) {
+        auto value = wrapper.evaluateScript(std::string(decimal) + "n");
+        ASSERT_TRUE(value.isBigInt()) << decimal;
+        EXPECT_EQ(decimal, value.getBigInt()->toString());
+        EXPECT_FALSE(value.isNumber());
+    }
+    wrapper.withContext([](IJavaScriptContext& context, JSExceptionTracker& tracker) {
+        auto zero = context.evaluate("0n", "bigint.js", tracker);
+        auto nonzero = context.evaluate("-1n", "bigint.js", tracker);
+        ASSERT_TRUE(tracker);
+        EXPECT_FALSE(context.valueToBool(zero.get(), tracker));
+        EXPECT_TRUE(context.valueToBool(nonzero.get(), tracker));
+    });
+    wrapper.evaluateScript("globalThis.BigInt = () => 0n");
+    wrapper.withContext([](IJavaScriptContext& context, JSExceptionTracker& tracker) {
+        for (const auto* decimal : {"-9223372036854775808", "18446744073709551616"}) {
+            auto integer = BigInt::make(decimal, tracker);
+            auto jsValue = context.newBigInt(*integer, tracker);
+            ASSERT_TRUE(tracker);
+            EXPECT_EQ(ValueType::BigInt, context.getValueType(jsValue.get()));
+            auto restored = context.valueToBigInt(jsValue.get(), tracker);
+            ASSERT_TRUE(tracker);
+            EXPECT_EQ(decimal, restored->toString());
+        }
+        auto invalid = context.newNumber(1);
+        EXPECT_EQ(nullptr, context.valueToBigInt(invalid.get(), tracker));
+        EXPECT_FALSE(tracker);
+        tracker.clearError();
+    });
+    auto arithmetic = wrapper.evaluateScript("(1n << 100n) + 1n");
+    ASSERT_TRUE(arithmetic.isBigInt());
+    EXPECT_EQ("1267650600228229401496703205377", arithmetic.toString());
+}
+
+TEST_P(JSContextFixture, bigintExactInt64Conversion) {
+    MAIN_THREAD_INIT();
+    SKIP_IF_NO_NATIVE_BIGINT();
+    auto wrapper = createWrapper();
+    wrapper.withContext([](IJavaScriptContext& context, JSExceptionTracker& tracker) {
+        for (const auto integer : {int64_t(0),
+                                   int64_t(1),
+                                   int64_t(-1),
+                                   int64_t(9007199254740993),
+                                   std::numeric_limits<int64_t>::min(),
+                                   std::numeric_limits<int64_t>::max()}) {
+            auto value = context.evaluate(std::to_string(integer) + "n", "bigint.js", tracker);
+            ASSERT_TRUE(tracker);
+            auto native = context.valueToBigInt(value.get(), tracker);
+            ASSERT_TRUE(tracker);
+            EXPECT_EQ(integer, native->toInt64());
+        }
+        for (const auto* decimal :
+             {"9223372036854775808", "-9223372036854775809", "18446744073709551616", "-18446744073709551616"}) {
+            auto value = context.evaluate(std::string(decimal) + "n", "bigint.js", tracker);
+            ASSERT_TRUE(tracker);
+            auto native = context.valueToBigInt(value.get(), tracker);
+            ASSERT_TRUE(tracker);
+            EXPECT_EQ(std::nullopt, native->toInt64());
+            EXPECT_EQ(decimal, native->toString());
+        }
+    });
+}
+
+TEST_P(JSContextFixture, bigintNumberConversionFollowsEngineBehavior) {
+    MAIN_THREAD_INIT();
+    SKIP_IF_NO_NATIVE_BIGINT();
+    auto wrapper = createWrapper();
+    auto entry = wrapper.makeJsEntry();
+    auto& context = entry.context;
+    auto& tracker = entry.exceptionTracker;
+    auto value = context.evaluate("1n", "bigint.js", tracker);
+    ASSERT_TRUE(tracker);
+
+    if (isHermes()) {
+        EXPECT_EQ(0, context.valueToInt(value.get(), tracker));
+        EXPECT_EQ(0.0, context.valueToDouble(value.get(), tracker));
+        ASSERT_TRUE(tracker);
+    } else {
+        context.valueToInt(value.get(), tracker);
+        ASSERT_FALSE(tracker);
+        const auto* intError = isV8() ? "not an int32 type" : "bigint";
+        EXPECT_TRUE(tracker.extractError().toStringBox().contains(intError));
+
+        context.valueToDouble(value.get(), tracker);
+        ASSERT_FALSE(tracker);
+        const auto* doubleError = isV8() ? "not a number type" : "bigint";
+        EXPECT_TRUE(tracker.extractError().toStringBox().contains(doubleError));
+    }
+
+    auto number = context.newNumber(42);
+    EXPECT_EQ(42, context.valueToInt(number.get(), tracker));
+    EXPECT_EQ(42.0, context.valueToDouble(number.get(), tracker));
+    ASSERT_TRUE(tracker);
 }
 
 TEST_P(JSContextFixture, canRetrieveError) {

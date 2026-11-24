@@ -218,6 +218,9 @@ final class SwiftSourceFileGenerator : CodeWriter {
             return SwiftTypeParser(typeName: "Double", isOptional: isOptional, marshallerName: "Double")
         case .bool:
             return SwiftTypeParser(typeName: "Bool", isOptional: isOptional, marshallerName: "Bool")
+        case .bigInt:
+            self.addImport(path: "valdi_core")
+            return SwiftTypeParser(typeName: "SCValdiBigInt", isOptional: isOptional, marshallerName: "BigInt")
         case .long:
             return SwiftTypeParser(typeName: "Int64", isOptional: isOptional, marshallerName: "Long")
         case .array(let elementType):

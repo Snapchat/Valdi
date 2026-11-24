@@ -80,6 +80,7 @@ JavaCache::JavaCache() {
     getPromiseCallbackClass();
     getCppPromiseCallbackClass();
     getCppPromiseClass();
+    getBigIntClass();
 }
 
 JavaCache& JavaCache::get() {
@@ -147,6 +148,11 @@ IMPLEMENT_JAVA_CLASS(String, "java/lang/String")
 
 IMPLEMENT_JAVA_CLASS(Integer, "java/lang/Integer")
 IMPLEMENT_JAVA_METHOD(Integer, Constructor, kJniSigConstructor, ConstructorType, int32_t)
+
+IMPLEMENT_JAVA_CLASS(BigInt, "com/snap/valdi/BigInt")
+IMPLEMENT_JAVA_METHOD(BigInt, Constructor, kJniSigConstructor, ConstructorType, int64_t, int64_t)
+IMPLEMENT_JAVA_METHOD(BigInt, LongValue, "getLongValue", int64_t)
+IMPLEMENT_JAVA_METHOD(BigInt, Handle, "getHandle", int64_t)
 
 IMPLEMENT_JAVA_CLASS(Long, "java/lang/Long")
 IMPLEMENT_JAVA_METHOD(Long, Constructor, kJniSigConstructor, ConstructorType, int64_t)

@@ -1,4 +1,102 @@
 //
+// BigIntModel.cpp
+//
+
+#include "valdi_core/cpp/Marshalling/CppMarshaller.hpp"
+#include "valdi_modules/test/test.hpp"
+
+namespace ValdiTest {
+
+  BigIntModel::BigIntModel(): Valdi::CppGeneratedModel(getRegisteredClass()) {
+  }
+
+  BigIntModel::BigIntModel(const Valdi::Ref<Valdi::BigInt> &value, const Valdi::Ref<Valdi::BigInt> &optional, const std::vector<Valdi::Ref<Valdi::BigInt>> &values, const BigIntModel::EchoFn &echo, const Valdi::Future<Valdi::Ref<Valdi::BigInt>> &promise): Valdi::CppGeneratedModel(getRegisteredClass()),
+  _value(std::move(value)),
+  _optional(std::move(optional)),
+  _values(std::move(values)),
+  _echo(std::move(echo)),
+  _promise(std::move(promise)) {
+  }
+
+  const Valdi::Ref<Valdi::BigInt> &BigIntModel::getValue() const {
+    return _value;
+  }
+
+  void BigIntModel::setValue(const Valdi::Ref<Valdi::BigInt> &value) {
+    _value = value;
+  }
+
+  void BigIntModel::setValue(Valdi::Ref<Valdi::BigInt> &&value) {
+    _value = std::move(value);
+  }
+
+  const Valdi::Ref<Valdi::BigInt> &BigIntModel::getOptional() const {
+    return _optional;
+  }
+
+  void BigIntModel::setOptional(const Valdi::Ref<Valdi::BigInt> &value) {
+    _optional = value;
+  }
+
+  void BigIntModel::setOptional(Valdi::Ref<Valdi::BigInt> &&value) {
+    _optional = std::move(value);
+  }
+
+  const std::vector<Valdi::Ref<Valdi::BigInt>> &BigIntModel::getValues() const {
+    return _values;
+  }
+
+  void BigIntModel::setValues(const std::vector<Valdi::Ref<Valdi::BigInt>> &value) {
+    _values = value;
+  }
+
+  void BigIntModel::setValues(std::vector<Valdi::Ref<Valdi::BigInt>> &&value) {
+    _values = std::move(value);
+  }
+
+  const BigIntModel::EchoFn &BigIntModel::getEcho() const {
+    return _echo;
+  }
+
+  void BigIntModel::setEcho(const BigIntModel::EchoFn &value) {
+    _echo = value;
+  }
+
+  void BigIntModel::setEcho(BigIntModel::EchoFn &&value) {
+    _echo = std::move(value);
+  }
+
+  const Valdi::Future<Valdi::Ref<Valdi::BigInt>> &BigIntModel::getPromise() const {
+    return _promise;
+  }
+
+  void BigIntModel::setPromise(const Valdi::Future<Valdi::Ref<Valdi::BigInt>> &value) {
+    _promise = value;
+  }
+
+  void BigIntModel::setPromise(Valdi::Future<Valdi::Ref<Valdi::BigInt>> &&value) {
+    _promise = std::move(value);
+  }
+
+  void BigIntModel::unmarshall(Valdi::ExceptionTracker &exceptionTracker, const Valdi::Value &value, BigIntModel &out) {
+    auto &self = out;
+    Valdi::CppMarshaller::unmarshallTypedObject(exceptionTracker, *getRegisteredClass(), value, self._value, self._optional, self._values, self._echo, self._promise);
+  }
+
+  void BigIntModel::marshall(Valdi::ExceptionTracker &exceptionTracker, const BigIntModel &value, Valdi::Value &out) {
+    const auto &self = value;
+    Valdi::CppMarshaller::marshallTypedObject(exceptionTracker, *getRegisteredClass(), out, self._value, self._optional, self._values, self._echo, self._promise);
+  }
+
+  Valdi::RegisteredCppGeneratedClass *BigIntModel::getRegisteredClass() {
+    static auto *kRegisteredClass = Valdi::CppGeneratedClass::registerSchema("c 'ValdiTest::BigIntModel'{'value':B, 'optional':B?, 'values':a<B>, 'echo':f(B): B, 'promise':p<B>}");
+
+    return kRegisteredClass;
+  }
+
+}
+
+//
 // CalculatorToStringFormat.cpp
 //
 

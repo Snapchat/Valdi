@@ -219,6 +219,10 @@ private:
 };
 
 Valdi::Ref<Valdi::ValueFunction> toFunction(const Valdi::Value& value);
+
+// JSCore exposes native BigInt only from iOS 18 / macOS 15 SDKs, and the
+// prebuilt libjsc used on Linux has none, so BigInt tests probe for it.
+bool jsBridgeSupportsNativeBigInt(Valdi::IJavaScriptBridge* jsBridge);
 Valdi::Result<Valdi::Value> callFunction(const Valdi::Ref<Valdi::ValueFunction>& function,
                                          const std::vector<Valdi::Value>& params);
 Valdi::Result<Valdi::Value> callFunction(const Valdi::Ref<Valdi::ValueFunction>& function);

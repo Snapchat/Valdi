@@ -370,6 +370,8 @@ final class KotlinCodeGenerator: CodeWriter {
             return getPrimitiveTypeParser(primitiveType: "Double", propertyName: propertyName, isOptional: isOptional)
         case .bool:
             return getPrimitiveTypeParser(primitiveType: "Boolean", propertyName: propertyName, isOptional: isOptional)
+        case .bigInt:
+            return KotlinTypeParser(typeName: resolveTypeName(typeName: "com.snap.valdi.BigInt", isOptional: isOptional))
         case .long:
             return getPrimitiveTypeParser(primitiveType: "Long", propertyName: propertyName, isOptional: isOptional)
         case .array(let elementType):

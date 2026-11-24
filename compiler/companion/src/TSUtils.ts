@@ -237,6 +237,7 @@ export const enum SymbolType {
   string,
   object,
   function,
+  bigint,
 }
 
 export interface SymbolObjectInfo {
@@ -287,6 +288,10 @@ function getResolvedSymbolForType(type: ts.Type): ResolvedSymbol[] {
   }
 
   const typeFlags = type.getFlags();
+
+  if (typeFlags & ts.TypeFlags.BigIntLike) {
+    return [{ type: SymbolType.bigint }];
+  }
 
   if (typeFlags & ts.TypeFlags.NumberLike) {
     return [{ type: SymbolType.number }];
