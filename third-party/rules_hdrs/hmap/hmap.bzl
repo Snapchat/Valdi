@@ -8,6 +8,12 @@ HmapInfo = provider(
         "mappings": "Transitive header mappings represented as a depset of tuples, each tuple defines an import path and the header file it maps to.",
     },
 )
+HeaderTreeInfo = provider(
+    "Carries a generated header tree without publishing it as a target's default output.",
+    fields = {
+        "tree": "Tree artifact containing generated headers.",
+    },
+)
 ModuleImportMappingInfo = provider(
     "Stores mappings of import paths to tuples of header, label and module name.",
     fields = {
@@ -63,7 +69,10 @@ def _make_header_tree_hmap_inputs(
     inputs = []
     mappings = {}
     for provider in header_tree_artifact_providers:
-        default_info_files = provider[DefaultInfo].files.to_list()
+        if HeaderTreeInfo in provider:
+            default_info_files = [provider[HeaderTreeInfo].tree]
+        else:
+            default_info_files = provider[DefaultInfo].files.to_list()
 
         if len(default_info_files) < 1:
             fail("header_tree_artifact_providers target must contain at least one tree artifact containing headers in DefaultInfo.files")
