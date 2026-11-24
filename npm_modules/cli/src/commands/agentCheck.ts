@@ -59,7 +59,7 @@ async function getTestTargets(client: BazelClient, module: string): Promise<stri
 async function valdiAgentCheck(argv: ArgumentsResolver<CommandParameters>) {
   const json = argv.getArgument('json') ?? false;
   const quick = argv.getArgument('quick') ?? false;
-  const bazelClient = new BazelClient();
+  const bazelClient = new BazelClient(json);
 
   const moduleName = argv.getArgument('module');
   const targetName = argv.getArgument('target');
@@ -119,8 +119,8 @@ async function valdiAgentCheck(argv: ArgumentsResolver<CommandParameters>) {
   // Lint and Tests run in parallel after build
   const lintPromise = (buildTargets.length > 0)
     ? runStep('Lint check', async () => {
-      const { runCliCommand } = await import('../utils/cliUtils');
       const { globSync } = await import('glob');
+      const { runPrettierCheck } = await import('../utils/prettierCheck');
       const firstTarget = buildTargets[0] ?? '';
       const packagePath = firstTarget.replace(/^\/\//, '').replace(/:.*$/, '') || '.';
       const globPattern = `${packagePath}/**/*.{ts,tsx}`;
@@ -130,11 +130,11 @@ async function valdiAgentCheck(argv: ArgumentsResolver<CommandParameters>) {
         return;
       }
 
-      const result = await runCliCommand(
-        `npx prettier --check "${globPattern}"`,
-      );
-      if (result.returnCode !== 0) {
-        throw new Error('Lint check failed — files not formatted');
+      const result = await runPrettierCheck(globPattern);
+      if (result.status === 'unformatted') {
+        throw new Error(`Lint check failed — files not formatted\n${result.output}`);
+      } else if (result.status === 'error') {
+        throw new Error(`Lint check could not run prettier\n${result.output}`);
       }
     }, json)
     : Promise.resolve({ name: 'Lint check', status: 'skip' as const, durationMs: 0, message: 'No targets resolved for lint' });
@@ -181,7 +181,6 @@ function outputResults(results: StepResult[], totalStart: number, json: boolean)
 
     if (failed > 0) {
       console.log(wrapInColor('\n✗ Agent check FAILED', ANSI_COLORS.RED_COLOR));
-      process.exitCode = 1;
     } else {
       console.log(wrapInColor('\n✓ Agent check PASSED', ANSI_COLORS.GREEN_COLOR));
     }

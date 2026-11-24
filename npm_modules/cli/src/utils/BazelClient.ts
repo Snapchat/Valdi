@@ -150,7 +150,9 @@ export class BazelClient {
   private executionRootCache: BazelCommandCache;
   private stableExecArgsCache: string | undefined;
 
-  constructor() {
+  // With machineOutput, stdout is reserved for the caller's own output (e.g. --json):
+  // our log lines and Bazel's output go to stderr instead.
+  constructor(private readonly machineOutput: boolean = false) {
     this.workspaceRootCache = new BazelCommandCache(async () => {
       return this.runCommandAndGetTrimmedStdOut('info workspace');
     });
@@ -319,9 +321,11 @@ export class BazelClient {
     extraArgs: string = '',
   ): Promise<CommandResult> {
     const commandWithOptions = getBazelCommandString(command, extraArgs, false);
-    console.log(
-      `${wrapInColor('Running Bazel command:', ANSI_COLORS.YELLOW_COLOR)} ${getBazelCli()} ${command} ${extraArgs}`,
-    );
+    const log = this.machineOutput ? console.error : console.log;
+    log(`${wrapInColor('Running Bazel command:', ANSI_COLORS.YELLOW_COLOR)} ${getBazelCli()} ${command} ${extraArgs}`);
+    if (this.machineOutput && stdioMode === 'inherit') {
+      stdioMode = ['ignore', 2, 2];
+    }
     return await spawnCliCommand(commandWithOptions, undefined, stdioMode, true, true);
   }
 

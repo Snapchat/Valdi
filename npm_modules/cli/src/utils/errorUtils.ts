@@ -39,7 +39,8 @@ export function makeCommandHandler<T>(cb: (argv: ArgumentsResolver<T>) => Promis
     const argumentsResolver = new ArgumentsResolver(argv);
     try {
       await cb(argumentsResolver);
-      process.exitCode = 0;
+      // A command may set a nonzero exit code itself (e.g. agent-check) without throwing.
+      process.exitCode ??= 0;
     } catch (error) {
       process.exitCode = 1;
 

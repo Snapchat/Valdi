@@ -45,7 +45,6 @@
     "@bazel/bazelisk": "^1.19.0",
     "@types/inquirer": "^9.0.7",
     "@types/yargs": "^17.0.32",
-    "extract-zip": "^2.0.1",
     "glob": "^11.0.1",
     "inquirer": "^8.0.0",
     "jsonc-parser": "^3.3.1",
