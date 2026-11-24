@@ -46,5 +46,6 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+@VALDI_TWEAKS_PLIST@
 </dict>
 </plist>

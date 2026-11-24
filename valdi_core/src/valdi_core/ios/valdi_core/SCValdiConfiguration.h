@@ -120,6 +120,17 @@ typedef void (^SCValdiPerformHapticFeedbackBlock)(NSString* type);
 @property (assign, nonatomic) BOOL isTestEnvironment;
 
 /**
+ * Runtime tweak values (keys prefixed `VALDI_`) that win over the app's tweak value provider; keys not
+ * listed still reach it. Values may be NSString, NSNumber or BOOL. Bool tweaks read `1/true/yes/on` and
+ * `0/false/no/off`.
+ *
+ * Valdi apps built with `valdi_application(tweaks = {...})` fill this from the `ValdiTweaks` dictionary in
+ * Info.plist. The `VALDI_TWEAKS` environment variable (`KEY=VALUE,KEY2=VALUE2`) wins over both, for example
+ * `SIMCTL_CHILD_VALDI_TWEAKS=VALDI_ENABLE_X=1 xcrun simctl launch ...`.
+ */
+@property (copy, nonatomic, nullable) NSDictionary<NSString*, id>* tweakOverrides;
+
+/**
  * ANR (Application Not Responding) detector timeout in milliseconds for the JS thread.
  * When greater than 0, the JavaScript ANR detector is started with this threshold.
  * When 0 (default), the ANR detector is not started.

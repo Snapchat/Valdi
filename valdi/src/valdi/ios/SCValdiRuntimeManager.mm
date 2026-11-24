@@ -415,6 +415,22 @@ static void updateRuntimeManagersArray(void (^callback)(NSMutableArray<NSValue *
 
     _cppInstance->setAtomicInitialAutoRenderStateEnabled(configuration.enableAtomicInitialAutoRenderState);
 
+    __block Valdi::TweakOverrideMap tweakOverrides;
+    [configuration.tweakOverrides enumerateKeysAndObjectsUsingBlock:^(NSString *key, id value, BOOL *stop) {
+        NSString *stringValue = nil;
+        if ([value isKindOfClass:[NSString class]]) {
+            stringValue = value;
+        } else if ([value isKindOfClass:[NSNumber class]]) {
+            stringValue = CFGetTypeID((__bridge CFTypeRef)value) == CFBooleanGetTypeID()
+                              ? ([value boolValue] ? @"1" : @"0")
+                              : [value stringValue];
+        }
+        if (stringValue != nil && key.length > 0) {
+            tweakOverrides[std::string(key.UTF8String)] = std::string(stringValue.UTF8String);
+        }
+    }];
+    _cppInstance->setTweakOverrides(std::move(tweakOverrides));
+
     if (configuration.disableGcStackUsageDetection) {
         Valdi::forceRetainJsObjects = true;
     }

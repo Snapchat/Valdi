@@ -157,6 +157,12 @@ void ValdiAndroid::NativeBridge::setDebuggerPortEnvironment(fbjni::alias_ref<fbj
     setenv("VALDI_DEBUGGER_SERVICE_PORT", debuggerPortString.c_str(), 1);
 }
 
+void ValdiAndroid::NativeBridge::setTweakOverridesEnvironment(fbjni::alias_ref<fbjni::JClass> /* clazz */,
+                                                              jstring overrides) {
+    const auto overridesString = ValdiAndroid::toStdString(ValdiAndroid::JavaEnv(), overrides);
+    setenv("VALDI_TWEAKS", overridesString.c_str(), 1);
+}
+
 jlong ValdiAndroid::NativeBridge::createRuntimeManager( // NOLINT
     fbjni::alias_ref<fbjni::JClass> /* clazz */,        // NOLINT
     jobject mainThreadDispatcher,
@@ -2577,6 +2583,7 @@ void ValdiAndroid::NativeBridge::registerNatives() {
     javaClassStatic()->registerNatives({
         makeNativeMethod("getBuildOptions", ValdiAndroid::NativeBridge::getBuildOptions),
         makeNativeMethod("setDebuggerPortEnvironment", ValdiAndroid::NativeBridge::setDebuggerPortEnvironment),
+        makeNativeMethod("setTweakOverridesEnvironment", ValdiAndroid::NativeBridge::setTweakOverridesEnvironment),
         makeNativeMethod("getAllRuntimeAttachedObjects", ValdiAndroid::NativeBridge::getAllRuntimeAttachedObjects),
         makeNativeMethod("prepareRenderBackend", ValdiAndroid::NativeBridge::prepareRenderBackend),
         makeNativeMethod("emitRuntimeManagerInitMetrics", ValdiAndroid::NativeBridge::emitRuntimeManagerInitMetrics),

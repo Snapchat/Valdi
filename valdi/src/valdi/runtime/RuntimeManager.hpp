@@ -10,6 +10,7 @@
 #include "valdi/runtime/Attributes/AttributesManager.hpp"
 #include "valdi/runtime/Interfaces/IJavaScriptContext.hpp"
 #include "valdi/runtime/Interfaces/IViewManager.hpp"
+#include "valdi/runtime/Interfaces/TweakOverrideProvider.hpp"
 #include "valdi/runtime/Resources/UserSession.hpp"
 #include "valdi/runtime/Runtime.hpp"
 #include "valdi/runtime/Utils/BridgeLogger.hpp"
@@ -147,6 +148,14 @@ public:
 
     void setTweakValueProvider(const Shared<ITweakValueProvider>& tweakValueProvider);
 
+    /**
+     * Replaces the tweak values from the app's own config (Info.plist, manifest, build file). They win
+     * over the provider from setTweakValueProvider; keys not listed still reach it. Values from the
+     * `VALDI_TWEAKS` environment variable (`KEY=VALUE,KEY2=VALUE2`), read once when the manager is
+     * created, win over these, so a launch can override what the app was built with.
+     */
+    void setTweakOverrides(TweakOverrideMap overrides);
+
     void setAtomicInitialAutoRenderStateEnabled(bool enabled);
 
     // `buildVersion` identifies the app build; the module archive cache starts fresh when it changes.
@@ -208,6 +217,7 @@ private:
     Ref<BytesAssetLoader> _bytesAssetLoader;
 
     mutable Mutex _mutex;
+    Mutex _tweakApplyMutex;
     Holder<Shared<snap::valdi_core::HTTPRequestManager>> _requestManager;
 
     std::vector<Weak<Runtime>> _runtimes;
@@ -216,10 +226,15 @@ private:
     std::vector<RegisteredTypeConverter> _registeredTypeConverters;
     std::vector<Ref<IRuntimeManagerListener>> _listeners;
 
+    void applyEffectiveTweakValueProvider();
+
     Ref<ColorPaletteManager> _colorPaletteManager;
     Ref<AttributionResolver> _attributionResolver;
     Holder<Ref<UserSession>> _userSession;
     Ref<ValdiRuntimeTweaks> _runtimeTweaks;
+    Shared<ITweakValueProvider> _hostTweakValueProvider;
+    TweakOverrideMap _tweakOverrides;
+    TweakOverrideMap _launchTweakOverrides;
     Ref<Metrics> _metrics;
     std::optional<MetricsDuration> _userSessionAttachLatency;
     bool _userSessionAttachLatencyEmitted = false;

@@ -2,6 +2,7 @@ package com.snap.valdi.support
 
 import android.content.Intent
 import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
 import android.view.View
@@ -19,6 +20,15 @@ import com.snapchat.client.valdi.NativeBridge
 
 /** Intent extra used to select the Valdi debugger port for a debuggable application. */
 const val VALDI_DEBUGGER_PORT_INTENT_EXTRA = "com.snap.valdi.DEBUGGER_PORT"
+
+/**
+ * Intent extra with `KEY=VALUE,KEY2=VALUE2` tweak overrides for a debuggable application. It wins over
+ * [VALDI_TWEAKS_MANIFEST_KEY]. For example: `adb shell am start -n <activity> --es com.snap.valdi.TWEAKS VALDI_ENABLE_X=1`.
+ */
+const val VALDI_TWEAKS_INTENT_EXTRA = "com.snap.valdi.TWEAKS"
+
+/** `<meta-data>` key in the application manifest with the app's `KEY=VALUE,KEY2=VALUE2` tweak overrides. */
+const val VALDI_TWEAKS_MANIFEST_KEY = "com.snap.valdi.tweaks"
 
 private const val VALDI_LOG_TAG = "Valdi"
 
@@ -71,7 +81,15 @@ abstract class AppBootstrapActivity: AppCompatActivity() {
             intent,
             applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0,
         )
+        val tweakOverrides = requestedValdiTweakOverrides(
+            intent,
+            applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0,
+            readManifestTweakOverrides(),
+        )
         loadNativeLibrary()
+        if (tweakOverrides != null) {
+            setTweakOverridesEnvironment(tweakOverrides)
+        }
         if (debuggerPort != null) {
             // This process-wide override intentionally persists for this debug host process. When the intent
             // omits the extra, this block is skipped so externally configured environment state remains unchanged.
@@ -87,6 +105,19 @@ abstract class AppBootstrapActivity: AppCompatActivity() {
 
     protected open fun setDebuggerPortEnvironment(debuggerPort: Int) {
         NativeBridge.setDebuggerPortEnvironment(debuggerPort)
+    }
+
+    protected open fun setTweakOverridesEnvironment(overrides: String) {
+        NativeBridge.setTweakOverridesEnvironment(overrides)
+    }
+
+    protected open fun readManifestTweakOverrides(): String? {
+        return try {
+            packageManager.getApplicationInfo(packageName, PackageManager.GET_META_DATA)
+                .metaData?.getString(VALDI_TWEAKS_MANIFEST_KEY)
+        } catch (e: PackageManager.NameNotFoundException) {
+            null
+        }
     }
 
     protected open fun bootstrapValdiRuntime() {
@@ -158,4 +189,14 @@ internal fun requestedValdiDebuggerPort(intent: Intent?, debuggable: Boolean): I
     }
 
     return port
+}
+
+/**
+ * The tweak overrides to apply at startup: the manifest's values, then the intent's, so the intent wins.
+ * The intent is only honored for debuggable applications; a release app takes its overrides from its manifest.
+ */
+internal fun requestedValdiTweakOverrides(intent: Intent?, debuggable: Boolean, manifestOverrides: String?): String? {
+    val intentOverrides = if (debuggable) intent?.getStringExtra(VALDI_TWEAKS_INTENT_EXTRA) else null
+    val combined = listOfNotNull(manifestOverrides, intentOverrides).filter { it.isNotBlank() }.joinToString(",")
+    return combined.ifEmpty { null }
 }

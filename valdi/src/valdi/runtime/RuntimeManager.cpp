@@ -37,9 +37,14 @@
 #include "valdi_core/cpp/Utils/LoggerUtils.hpp"
 
 #include <algorithm>
+#include <cstdlib>
 #include <memory>
 
 namespace Valdi {
+
+namespace {
+constexpr const char* kTweakOverridesEnvironmentVariable = "VALDI_TWEAKS";
+}
 
 Shared<DebuggerService> createDebuggerService(bool enableDebuggerService,
                                               bool disableHotReloader,
@@ -179,6 +184,20 @@ RuntimeManager::RuntimeManager(const Ref<IMainThreadDispatcher>& mainThreadDispa
     }
 
     _colorPaletteManager->setListener(this);
+
+    if (const char* envOverrides = std::getenv(kTweakOverridesEnvironmentVariable)) {
+        auto launchOverrides = TweakOverrideProvider::parse(envOverrides);
+        for ([[maybe_unused]] const auto& [key, value] : launchOverrides) {
+            VALDI_INFO(*_logger, "Tweak launch override {}={}", key, value);
+        }
+        if (!launchOverrides.empty()) {
+            {
+                std::lock_guard<Mutex> guard(_mutex);
+                _launchTweakOverrides = std::move(launchOverrides);
+            }
+            applyEffectiveTweakValueProvider();
+        }
+    }
 }
 
 RuntimeManager::~RuntimeManager() {
@@ -646,11 +665,55 @@ void RuntimeManager::setMetrics(const Ref<Metrics>& metrics) {
 }
 
 void RuntimeManager::setTweakValueProvider(const Shared<ITweakValueProvider>& tweakValueProvider) {
+    {
+        std::lock_guard<Mutex> guard(_mutex);
+        _hostTweakValueProvider = tweakValueProvider;
+    }
+    applyEffectiveTweakValueProvider();
+}
+
+void RuntimeManager::setTweakOverrides(TweakOverrideMap overrides) {
+    {
+        std::lock_guard<Mutex> guard(_mutex);
+        // Hosts call this on every configuration update; an unchanged map, including none at all, must not
+        // rebuild and re-push the runtime tweaks.
+        if (_tweakOverrides == overrides) {
+            return;
+        }
+        _tweakOverrides = overrides;
+    }
+    for ([[maybe_unused]] const auto& [key, value] : overrides) {
+        VALDI_INFO(*_logger, "Tweak override {}={}", key, value);
+    }
+    applyEffectiveTweakValueProvider();
+}
+
+void RuntimeManager::applyEffectiveTweakValueProvider() {
+    // One apply at a time, start to finish: each reads the latest provider and overrides, and the one that
+    // publishes last is also the one that pushes last. _mutex alone can't give that, because it is released
+    // between reading the inputs and pushing the result to the runtimes.
+    std::lock_guard<Mutex> applyGuard(_tweakApplyMutex);
+
     std::vector<SharedRuntime> runtimes;
     Ref<ValdiRuntimeTweaks> runtimeTweaks;
 
-    if (tweakValueProvider != nullptr) {
-        runtimeTweaks = makeShared<ValdiRuntimeTweaks>(tweakValueProvider);
+    Shared<ITweakValueProvider> effectiveProvider;
+    {
+        std::lock_guard<Mutex> guard(_mutex);
+        if (_tweakOverrides.empty() && _launchTweakOverrides.empty()) {
+            effectiveProvider = _hostTweakValueProvider;
+        } else {
+            auto merged = _tweakOverrides;
+            for (const auto& [key, value] : _launchTweakOverrides) {
+                merged[key] = value;
+            }
+            effectiveProvider =
+                makeShared<TweakOverrideProvider>(std::move(merged), _hostTweakValueProvider).toShared();
+        }
+    }
+
+    if (effectiveProvider != nullptr) {
+        runtimeTweaks = makeShared<ValdiRuntimeTweaks>(effectiveProvider);
     }
 
     {

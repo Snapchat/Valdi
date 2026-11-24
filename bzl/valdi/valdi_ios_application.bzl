@@ -1,6 +1,7 @@
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_application")
 load("@build_bazel_rules_apple//apple:versioning.bzl", "apple_bundle_version")
 load("//bzl:expand_template.bzl", "expand_template")
+load("//bzl/valdi:tweaks.bzl", "valdi_tweaks_plist_entry")
 load(
     "//bzl/valdi:valdi_ios_application_icons.bzl",
     "generate_valdi_ios_application_icons",
@@ -30,6 +31,7 @@ def valdi_ios_application(
         app_icons = None,
         resources = [],
         version = None,
+        tweaks = {},
         deps = []):
     main_target = "{}_maingen".format(name)
     src_target = "{}_src".format(name)
@@ -44,6 +46,8 @@ def valdi_ios_application(
         minimum_os_version = "15.0"
 
     infoplists = []
+    if info_plist and tweaks:
+        fail("tweaks can't be combined with info_plist: add a ValdiTweaks dictionary to your own Info.plist")
     if info_plist:
         infoplists.append(info_plist)
     else:
@@ -55,6 +59,7 @@ def valdi_ios_application(
             output = "Info.plist",
             substitutions = {
                 "@VALDI_BUNDLE_IDENTIFIER@": bundle_id,
+                "@VALDI_TWEAKS_PLIST@": valdi_tweaks_plist_entry(tweaks),
             },
         )
 

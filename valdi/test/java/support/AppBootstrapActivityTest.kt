@@ -18,6 +18,7 @@ import org.robolectric.shadows.ShadowLog
 
 class TestAppBootstrapActivity : AppBootstrapActivity() {
     val lifecycleEvents = mutableListOf<String>()
+    var manifestTweakOverrides: String? = null
 
     override fun createRootView(bootstrapper: AppBootstrapper): ValdiRootView {
         error("Runtime bootstrap is replaced by the test seam")
@@ -30,6 +31,12 @@ class TestAppBootstrapActivity : AppBootstrapActivity() {
     protected override fun setDebuggerPortEnvironment(debuggerPort: Int) {
         lifecycleEvents += "setDebuggerPortEnvironment:$debuggerPort"
     }
+
+    protected override fun setTweakOverridesEnvironment(overrides: String) {
+        lifecycleEvents += "setTweakOverridesEnvironment:$overrides"
+    }
+
+    protected override fun readManifestTweakOverrides(): String? = manifestTweakOverrides
 
     protected override fun bootstrapValdiRuntime() {
         lifecycleEvents += "bootstrapValdiRuntime"
@@ -140,6 +147,56 @@ class AppBootstrapActivityTest {
         }
     }
 
+    @Test
+    fun tweakOverridesCombineTheManifestWithADebuggableIntentAndTheIntentWinsLast() {
+        val intent = Intent().putExtra(VALDI_TWEAKS_INTENT_EXTRA, "B=intent")
+
+        assertEquals("A=manifest,B=intent", invokeRequestedValdiTweakOverrides(intent, true, "A=manifest"))
+        assertEquals("B=intent", invokeRequestedValdiTweakOverrides(intent, true, null))
+        assertEquals("A=manifest", invokeRequestedValdiTweakOverrides(intent, false, "A=manifest"))
+        assertNull(invokeRequestedValdiTweakOverrides(intent, false, null))
+        assertNull(invokeRequestedValdiTweakOverrides(null, true, "  "))
+        assertNull(invokeRequestedValdiTweakOverrides(Intent(), true, null))
+    }
+
+    @Test
+    fun onCreateAppliesTweakOverridesAfterLibraryLoadAndBeforeTheRuntimeStarts() {
+        val activity = createActivity(
+            Intent().putExtra(VALDI_TWEAKS_INTENT_EXTRA, "B=intent"),
+            debuggable = true,
+            manifestTweakOverrides = "A=manifest",
+        )
+
+        assertEquals(
+            listOf("loadNativeLibrary", "setTweakOverridesEnvironment:A=manifest,B=intent", "bootstrapValdiRuntime"),
+            activity.lifecycleEvents,
+        )
+    }
+
+    @Test
+    fun onCreateIgnoresTheTweakIntentExtraForReleaseApplications() {
+        val activity = createActivity(
+            Intent().putExtra(VALDI_TWEAKS_INTENT_EXTRA, "B=intent"),
+            debuggable = false,
+            manifestTweakOverrides = "A=manifest",
+        )
+
+        assertEquals(
+            listOf("loadNativeLibrary", "setTweakOverridesEnvironment:A=manifest", "bootstrapValdiRuntime"),
+            activity.lifecycleEvents,
+        )
+    }
+
+    private fun invokeRequestedValdiTweakOverrides(intent: Intent?, debuggable: Boolean, manifest: String?): String? =
+        Class.forName("com.snap.valdi.support.AppBootstrapActivityKt")
+            .getDeclaredMethod(
+                "requestedValdiTweakOverrides",
+                Intent::class.java,
+                Boolean::class.java,
+                String::class.java,
+            )
+            .invoke(null, intent, debuggable, manifest) as String?
+
     private fun valdiWarnings(): List<String> =
         ShadowLog.getLogsForTag("Valdi").filter { it.type == Log.WARN }.map { it.msg }
 
@@ -148,12 +205,17 @@ class AppBootstrapActivityTest {
             .getDeclaredMethod("requestedValdiDebuggerPort", Intent::class.java, Boolean::class.java)
             .invoke(null, intent, debuggable) as Int?
 
-    private fun createActivity(intent: Intent, debuggable: Boolean): TestAppBootstrapActivity {
+    private fun createActivity(
+        intent: Intent,
+        debuggable: Boolean,
+        manifestTweakOverrides: String? = null,
+    ): TestAppBootstrapActivity {
         // Invoke the bootstrap seam directly instead of controller.create(): AppBootstrapActivity is an
         // AppCompatActivity whose themed super.onCreate() can't resolve AppCompat resources under
         // manifest = Config.NONE. The seam exercises the debugger-port and runtime bootstrap under test.
         val activity = Robolectric.buildActivity(TestAppBootstrapActivity::class.java).get()
         activity.intent = intent
+        activity.manifestTweakOverrides = manifestTweakOverrides
         activity.applicationInfo.flags = if (debuggable) {
             activity.applicationInfo.flags or ApplicationInfo.FLAG_DEBUGGABLE
         } else {

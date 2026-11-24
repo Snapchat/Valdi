@@ -21,6 +21,8 @@ valdi_application(
     ios_families = ["iphone"],
     root_component_path = "App@hello_world/src/HelloWorldApp",
     title = "Valdi Hello World",
+    # No code reads this key. It exercises the tweaks plumbing: Info.plist (iOS, macOS) and the manifest (Android).
+    tweaks = {"VALDI_HELLO_WORLD_TWEAKS_PROBE": True},
     version = "1.0.0",
     deps = ["//apps/helloworld/src/valdi/hello_world"],
 )

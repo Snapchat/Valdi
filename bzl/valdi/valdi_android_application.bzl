@@ -2,6 +2,7 @@ load("@rules_android//rules:rules.bzl", "android_binary")
 load("@rules_kotlin//kotlin:android.bzl", "kt_android_library")
 load("@valdi//valdi:valdi.bzl", "valdi_android_aar")
 load("//bzl:expand_template.bzl", "expand_template")
+load("//bzl/valdi:tweaks.bzl", "valdi_tweaks_manifest_entry")
 load(
     "//bzl/valdi:valdi_android_application_icons.bzl",
     "generate_valdi_android_application_icons",
@@ -34,6 +35,7 @@ def valdi_android_application(
         icon_name = None,
         round_icon_name = None,
         activity_theme_name = None,
+        tweaks = {},
         deps = [],
         resources = [],
         native_deps = []):
@@ -68,6 +70,9 @@ def valdi_android_application(
 
     resolved_app_manifest = app_manifest
 
+    if app_manifest and tweaks:
+        fail("tweaks can't be combined with app_manifest: add a com.snap.valdi.tweaks <meta-data> to your own manifest")
+
     if not app_manifest:
         app_attributes = []
 
@@ -95,6 +100,7 @@ def valdi_android_application(
                 "@VALDI_APP_NAME@": title,
                 "@VALDI_APPLICATION_ATTRIBUTES@": _make_xml_compound_substitution(app_attributes),
                 "@VALDI_ACTIVITY_ATTRIBUTES@": _make_xml_compound_substitution(activity_attributes),
+                "@VALDI_APPLICATION_META_DATA@": valdi_tweaks_manifest_entry(tweaks),
             },
         )
 

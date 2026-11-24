@@ -20,6 +20,11 @@
         configuration.allowDarkMode = YES;
         // Bootstrap apps are local-development hosts, so keep their previous hot-reload behavior explicit.
         configuration.enableDebuggerService = YES;
+
+        id tweaks = [NSBundle.mainBundle objectForInfoDictionaryKey:@"ValdiTweaks"];
+        if ([tweaks isKindOfClass:[NSDictionary class]]) {
+            configuration.tweakOverrides = tweaks;
+        }
     }];
 
     id<SCValdiRuntimeProtocol> runtime = _runtimeManager.mainRuntime;

@@ -15,6 +15,7 @@
         android:theme="@style/Theme.AppCompat.Light.NoActionBar"
         @VALDI_APPLICATION_ATTRIBUTES@
     >
+        @VALDI_APPLICATION_META_DATA@
         <activity
             android:name="@VALDI_APP_PACKAGE@.StartActivity"
             android:screenOrientation="portrait"

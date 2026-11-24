@@ -62,6 +62,7 @@ def valdi_application(
         desktop_window_resizable = True,
         resources = [],
         version = None,
+        tweaks = {},
         deps = []):
     resources = resources + [Label("//bzl/valdi:api_version_file")]
     resolved_ios_bundle_id = ios_bundle_id if ios_bundle_id else "com.snap.valdi.{}".format(name)
@@ -97,6 +98,7 @@ def valdi_application(
         app_icons = ios_app_icons,
         resources = resources,
         version = version,
+        tweaks = tweaks,
         deps = get_suffixed_deps(deps, "_objc"),
     )
 
@@ -113,6 +115,7 @@ def valdi_application(
         icon_name = android_app_icon_name,
         round_icon_name = android_round_app_icon_name,
         activity_theme_name = android_activity_theme_name,
+        tweaks = tweaks,
         deps = get_suffixed_deps(deps, "_kt"),
         resources = resources,
         native_deps = get_suffixed_deps(deps, "_native"),
@@ -128,6 +131,7 @@ def valdi_application(
         window_resizable = desktop_window_resizable,
         app_icons = macos_app_icons,
         resources = resources,
+        tweaks = tweaks,
         deps = get_suffixed_deps(deps, "_native"),
     )
 

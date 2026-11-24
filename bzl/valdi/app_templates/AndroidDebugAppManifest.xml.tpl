@@ -16,6 +16,7 @@
         android:theme="@style/Theme.AppCompat.Light.NoActionBar"
         @VALDI_APPLICATION_ATTRIBUTES@
     >
+        @VALDI_APPLICATION_META_DATA@
         <profileable android:shell="true" />
 
         <activity

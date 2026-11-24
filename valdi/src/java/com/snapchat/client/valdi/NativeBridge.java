@@ -5,6 +5,7 @@ import com.snap.valdi.callable.ValdiFunction;
 public class NativeBridge {
     public static native int getBuildOptions();
     public static native void setDebuggerPortEnvironment(int debuggerPort);
+    public static native void setTweakOverridesEnvironment(String overrides);
     public static native long createRuntimeManager(Object mainThreadDispatcher,
                                                       Object snapDrawingFrameScheduler,
                                                       Object viewManager,

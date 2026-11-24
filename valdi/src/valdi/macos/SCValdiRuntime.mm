@@ -120,6 +120,26 @@ public:
                                                                                /* isStandalone */ true,
                                                                                std::nullopt);
         _runtimeManager->postInit();
+
+        id infoPlistTweaks = [NSBundle.mainBundle objectForInfoDictionaryKey:@"ValdiTweaks"];
+        if ([infoPlistTweaks isKindOfClass:[NSDictionary class]]) {
+            __block Valdi::TweakOverrideMap tweakOverrides;
+            [(NSDictionary *)infoPlistTweaks enumerateKeysAndObjectsUsingBlock:^(NSString *key, id value, BOOL *stop) {
+                NSString *stringValue = nil;
+                if ([value isKindOfClass:[NSString class]]) {
+                    stringValue = value;
+                } else if ([value isKindOfClass:[NSNumber class]]) {
+                    stringValue = CFGetTypeID((__bridge CFTypeRef)value) == CFBooleanGetTypeID()
+                                      ? ([value boolValue] ? @"1" : @"0")
+                                      : [value stringValue];
+                }
+                if (stringValue != nil && key.length > 0) {
+                    tweakOverrides[std::string(key.UTF8String)] = std::string(stringValue.UTF8String);
+                }
+            }];
+            _runtimeManager->setTweakOverrides(std::move(tweakOverrides));
+        }
+
         _runtimeManager->applicationDidResume();
         _runtimeManager->registerBytesAssetLoader(cachesImageCache);
 

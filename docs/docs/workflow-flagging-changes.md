@@ -71,8 +71,17 @@ Behavior decided in the C++ runtime goes in `ValdiRuntimeTweaks`. Use the platfo
 A host app passes an `ITweakValueProvider` (`valdi/src/valdi/runtime/Interfaces/ITweakValueProvider.hpp`) to the runtime. It answers `getBool`, `getInt`, `getFloat`, `getString` and `getBinary` for a key, with a fallback.
 
 - **C++ and the standalone runtime:** pass it to `RuntimeManager::setTweakValueProvider`, or as the `tweakValueProvider` argument of `ValdiStandaloneRuntime::create`.
-- **iOS and Android apps** don't have a public setter yet. Until they do, a new flag stays at its default in those apps, which is the old behavior.
+- **Overrides, on every platform:** any app can also set tweak values without writing a provider. They win over the provider for the keys they list, and every other key still reaches the provider. A bool reads `1/true/yes/on` and `0/false/no/off`; a value that doesn't parse as the type the code asks for is ignored.
 
+  | Where | How | Wins over |
+  |---|---|---|
+  | Build file (iOS, macOS, Android) | `valdi_application(tweaks = {"VALDI_ENABLE_X": True})`. It writes a `ValdiTweaks` dictionary to Info.plist and a `com.snap.valdi.tweaks` `<meta-data>` to the manifest. Apps that bring their own `ios_info_plist` or `android_app_manifest` add those entries themselves. | the provider |
+  | iOS code | `SCValdiConfiguration.tweakOverrides` | the provider |
+  | Launch, any platform | the `VALDI_TWEAKS` environment variable: `VALDI_TWEAKS=VALDI_ENABLE_X=1,VALDI_ENABLE_Y=0`. On the iOS simulator use `SIMCTL_CHILD_VALDI_TWEAKS=... xcrun simctl launch ...`. Linux, macOS and the standalone runtime read it directly. | the build file and the provider |
+  | Launch, Android | `adb shell am start -n <activity> --es com.snap.valdi.TWEAKS VALDI_ENABLE_X=1`. Only debuggable apps honor it. | the manifest and the provider |
+  | C++ hosts | `RuntimeManager::setTweakOverrides` | the provider |
+
+  Use these to turn a flag on in a bootstrapped app, and to run the smoke tests with the flag on and off. The runtime logs each override it applies, as `Tweak override KEY=VALUE`. The web runtime doesn't read them.
 Any key the provider doesn't answer returns the getter's fallback, so a host that knows nothing about your flag keeps today's behavior.
 
 ## 5. Roll out and remove

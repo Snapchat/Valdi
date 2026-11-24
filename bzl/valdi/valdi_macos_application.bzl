@@ -1,5 +1,6 @@
 load("@build_bazel_rules_apple//apple:macos.bzl", "macos_application")
 load("//bzl:expand_template.bzl", "expand_template")
+load("//bzl/valdi:tweaks.bzl", "valdi_tweaks_plist_entry")
 load(
     "//bzl/valdi:valdi_macos_application_icons.bzl",
     "generate_valdi_macos_application_icons",
@@ -19,6 +20,7 @@ def valdi_macos_application(
         window_resizable,
         app_icons = None,
         resources = [],
+        tweaks = {},
         deps = []):
     main_target = "{}_maingen".format(name)
     plist_target = "{}_plist".format(name)
@@ -30,6 +32,7 @@ def valdi_macos_application(
         output = "Info.plist",
         substitutions = {
             "@VALDI_BUNDLE_IDENTIFIER@": bundle_id,
+            "@VALDI_TWEAKS_PLIST@": valdi_tweaks_plist_entry(tweaks),
         },
     )
 
