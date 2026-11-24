@@ -576,6 +576,20 @@ async function listenOnPort(port: number): Promise<net.Server> {
   });
 }
 
+// getFreePort() returns a port from the kernel's ephemeral range, so another process's outgoing
+// connection can hold port + 1. Returns a free port and a listener that holds port + 1 free.
+async function getFreePortWithFreeNext(): Promise<{ port: number; nextPortHolder: net.Server }> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const port = await getFreePort();
+    try {
+      return { port, nextPortHolder: await listenOnPort(port + 1) };
+    } catch {
+      // port + 1 is in use: try another port.
+    }
+  }
+  throw new Error('Could not find two adjacent free TCP ports.');
+}
+
 async function closeServer(server: { close: (callback: (error?: Error) => void) => void }): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     server.close(error => (error ? reject(error) : resolve()));
@@ -2675,8 +2689,9 @@ describe('debugger server', () => {
   });
 
   it('selects the next port when the preferred port is occupied', async () => {
-    const preferredPort = await getFreePort();
+    const { port: preferredPort, nextPortHolder } = await getFreePortWithFreeNext();
     occupiedPortServer = await listenOnPort(preferredPort);
+    await closeServer(nextPortHolder);
 
     debuggerServer = await startDebuggerServer({
       assetRoot,
