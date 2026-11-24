@@ -7,6 +7,12 @@
 @implementation SCValdiBootstrappingDependencies
 @end
 
+@interface SCValdiBootstrappingAppDelegate ()
+
+- (UIViewController*)createRootViewController;
+
+@end
+
 @implementation SCValdiBootstrappingAppDelegate {
     UIWindow* _rootWindow;
     SCValdiRuntimeManager* _runtimeManager;
@@ -27,9 +33,23 @@
         }
     }];
 
-    id<SCValdiRuntimeProtocol> runtime = _runtimeManager.mainRuntime;
+    // With a scene manifest, UIKit ignores a window made here; SCValdiBootstrappingSceneDelegate makes it instead.
+    if ([NSBundle.mainBundle objectForInfoDictionaryKey:@"UIApplicationSceneManifest"] != nil) {
+        return YES;
+    }
 
     UIWindow* window = [UIWindow new];
+    window.rootViewController = [self createRootViewController];
+    [window makeKeyAndVisible];
+
+    _rootWindow = window;
+
+    return YES;
+}
+
+- (UIViewController*)createRootViewController
+{
+    id<SCValdiRuntimeProtocol> runtime = _runtimeManager.mainRuntime;
 
     SCValdiDefaultNavigator* navigator = [[SCValdiDefaultNavigator alloc] initWithRuntime:runtime];
 
@@ -46,12 +66,7 @@
         [[UINavigationController alloc] initWithRootViewController:viewController];
     navigationController.navigationBar.translucent = NO;
 
-    window.rootViewController = navigationController;
-    [window makeKeyAndVisible];
-
-    _rootWindow = window;
-
-    return YES;
+    return navigationController;
 }
 
 - (NSString*)rootValdiComponentPath
@@ -69,6 +84,32 @@
                                                                  viewModel:nil
                                                           componentContext:@{@"navigator": dependencies.navigator}
                                                                 runtime:dependencies.runtime];
+}
+
+@end
+
+@implementation SCValdiBootstrappingSceneDelegate
+
+- (void)scene:(UIScene*)scene
+    willConnectToSession:(UISceneSession*)session
+                 options:(UISceneConnectionOptions*)connectionOptions
+{
+    if (![scene isKindOfClass:[UIWindowScene class]]) {
+        return;
+    }
+    id<UIApplicationDelegate> applicationDelegate = UIApplication.sharedApplication.delegate;
+    if (![applicationDelegate isKindOfClass:[SCValdiBootstrappingAppDelegate class]]) {
+        [NSException raise:NSInternalInconsistencyException
+                    format:@"SCValdiBootstrappingSceneDelegate requires an SCValdiBootstrappingAppDelegate; "
+                           @"see docs/TROUBLESHOOTING.md#ios-27-uiscene"];
+    }
+
+    UIWindow* window = [[UIWindow alloc] initWithWindowScene:(UIWindowScene*)scene];
+    window.rootViewController =
+        [(SCValdiBootstrappingAppDelegate*)applicationDelegate createRootViewController];
+    [window makeKeyAndVisible];
+
+    self.window = window;
 }
 
 @end

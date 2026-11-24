@@ -18,6 +18,44 @@ error: "The selected platform is no longer supported by libc++." [-Werror,-W#war
 Update your project to a Valdi version with Xcode 27 support. On macOS 26 you can instead build with Xcode 26.5 and make sure Bazel uses it (see the next entry); macOS 27 can't run Xcode 26.5.
 </details>
 
+<details id="ios-27-uiscene">
+    <summary>iOS app exits at launch: <code>UIScene life cycle is required for apps built with this SDK</code></summary>
+
+Apps built with the iOS 27 SDK must adopt the UIScene life cycle, or UIKit refuses to launch them. The full log line looks like:
+
+```
+Application failed to launch: UIScene life cycle is required for apps built with this SDK.
+```
+
+The default `valdi_application` setup handles this: the generated `Info.plist` declares a scene manifest whose delegate is `SCValdiBootstrappingSceneDelegate`. You need to act only if your app does one of these:
+
+- **It passes its own `ios_info_plist`.** Add the scene manifest to that plist. The scene delegate builds the root view through your `SCValdiBootstrappingAppDelegate` subclass:
+
+  ```xml
+  <key>UIApplicationSceneManifest</key>
+  <dict>
+      <key>UIApplicationSupportsMultipleScenes</key>
+      <false/>
+      <key>UISceneConfigurations</key>
+      <dict>
+          <key>UIWindowSceneSessionRoleApplication</key>
+          <array>
+              <dict>
+                  <key>UISceneConfigurationName</key>
+                  <string>Default Configuration</string>
+                  <key>UISceneDelegateClassName</key>
+                  <string>SCValdiBootstrappingSceneDelegate</string>
+              </dict>
+          </array>
+      </dict>
+  </dict>
+  ```
+
+- **Its app delegate isn't an `SCValdiBootstrappingAppDelegate`.** `SCValdiBootstrappingSceneDelegate` raises at launch because there's no bootstrapping delegate to build the root view. Use your own `UIWindowSceneDelegate` in its place: create the window in `scene:willConnectToSession:options:` with `initWithWindowScene:`, and name your class in the manifest's `UISceneDelegateClassName`.
+
+Without a scene manifest, the app delegate keeps creating its window in `application:didFinishLaunchingWithOptions:` as before, which still works with SDKs before iOS 27.
+</details>
+
 <a id="bazel-uses-the-wrong-xcode-version"></a>
 <details>
     <summary>Bazel uses the wrong Xcode version</summary>
