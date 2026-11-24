@@ -29,7 +29,11 @@ if [[ "${GITHUB_ACTIONS:-}" == "true" ]] ; then
     TEST_ARGS+=(--test_env=VALDI_QUARANTINE_ORPHANED_WORKER_TESTS=1)
 fi
 # iOS test bundles all launch into one shared simulator. Started together, they hang in their first
-# test until the 300s timeout, so run them one at a time after everything else.
+# test until the 300s timeout, so run them one at a time after everything else. Even then the first
+# bundle can hang right after "Created new simulator" (public CI runs 44646257873, 44787078969 and
+# 45150866872 each lost //valdi:valdi_ios_snap_drawing_viewport_test this way while every later
+# bundle passed in under a minute). That first boot overlapped the build of the remaining targets,
+# so build the iOS bundles first, and let Bazel retry a hung bundle once.
 IOS_TEST_TARGETS=()
 while IFS= read -r t ; do
     [[ -n "$t" ]] && IOS_TEST_TARGETS+=("$t")
@@ -41,7 +45,10 @@ done
 status=0
 bzl test "${OTHER_TEST_TARGETS[@]}" "${TEST_ARGS[@]}" || status=$?
 if (( ${#IOS_TEST_TARGETS[@]} )) ; then
-    bzl test "${IOS_TEST_TARGETS[@]}" "${TEST_ARGS[@]}" --local_test_jobs=1 || status=$?
+    bzl build "${IOS_TEST_TARGETS[@]}" --keep_going --skip_incompatible_explicit_targets \
+        --valdi_js_engine=auto || status=$?
+    bzl test "${IOS_TEST_TARGETS[@]}" "${TEST_ARGS[@]}" --local_test_jobs=1 \
+        --flaky_test_attempts=2 || status=$?
 fi
 (( status == 0 )) || exit "$status"
 
