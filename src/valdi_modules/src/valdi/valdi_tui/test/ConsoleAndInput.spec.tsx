@@ -1,8 +1,8 @@
 import 'jasmine/src/jasmine';
 import { Component } from 'valdi_core/src/Component';
 import { useInput } from '../src/App';
-import { Text } from '../src/Text';
 import { RenderInstance } from '../src/TerminalRenderer';
+import { Text } from '../src/Text';
 import { Key } from '../src/keys';
 import { render, unmountAll } from './renderTracked';
 
@@ -30,7 +30,10 @@ class Recorder extends Component {
 }
 
 function delay(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise(resolve => {
+    const timer = setTimeout(resolve, ms);
+    return timer;
+  });
 }
 
 async function waitFor(condition: () => boolean, description: string): Promise<void> {

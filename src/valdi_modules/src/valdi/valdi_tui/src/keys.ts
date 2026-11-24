@@ -126,7 +126,7 @@ function csiPress(params: string, intermediates: string, final: string, raw: str
     // Back-tab is reported as its own final byte, without a modifier parameter.
     key.shift = true;
   }
-  const modifier = parseInt((final === '~' ? parts[1] : (parts[1] ?? parts[0])) ?? '1', 10);
+  const modifier = parseInt((final === '~' ? parts[1] : parts[1] ?? parts[0]) ?? '1', 10);
   if (!isNaN(modifier) && modifier > 1) {
     applyModifier(key, modifier);
   }
