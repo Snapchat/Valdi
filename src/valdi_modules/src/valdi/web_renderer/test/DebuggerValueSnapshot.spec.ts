@@ -105,7 +105,11 @@ describe('DebuggerValueSnapshot', () => {
   });
 
   it('uses bounded markers for bigint and symbol values', () => {
-    const bigintFactory = Reflect.get(globalThis, 'BigInt') as (value: number) => unknown;
+    const bigintFactory = Reflect.get(globalThis, 'BigInt') as ((value: number) => unknown) | undefined;
+    if (!bigintFactory) {
+      pending('the engine has no BigInt');
+      return;
+    }
     const captured = captureDebuggerPropertiesSnapshot(
       { bigint: bigintFactory(1), symbol: Symbol('description is intentionally not copied') },
       65_536,
