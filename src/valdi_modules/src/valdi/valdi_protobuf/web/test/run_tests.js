@@ -89,6 +89,7 @@ const jestConfig = {
   testPathIgnorePatterns: [],  // Don't ignore anything
   roots: [testDir],  // Only search in test directory
   testMatch: ['**/*.spec.js'],  // Only match .spec.js files
+  watchman: false,  // The Bazel sandbox can't write watchman's state dir
 };
 const configPath = path.join(testDir, 'jest.config.json');
 fs.writeFileSync(configPath, JSON.stringify(jestConfig));

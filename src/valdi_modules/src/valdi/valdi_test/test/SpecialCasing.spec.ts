@@ -11,6 +11,10 @@ import { supportsLocaleCasing } from './EngineSupport';
  * assertions match native Intl behavior — both engines must agree.
  */
 
+// The rule only recognizes a literal `describe(...)` call, not describeIfLocaleCasing (which is
+// always describe or xdescribe). Remove once @snap/eslint-plugin-valdi follows the binding.
+/* eslint-disable @snap/valdi/no-declare-test-without-describe */
+
 // Skipped where the engine has no locale-aware casing; the non-locale entry points still run.
 const describeIfLocaleCasing = supportsLocaleCasing ? describe : xdescribe;
 
@@ -29,9 +33,7 @@ describeIfLocaleCasing('Turkic (tr, az) SpecialCasing', () => {
     });
 
     it('uppercases production reason string', () => {
-      expect('benimle birlikte 1+ grupta'.toLocaleUpperCase('tr')).toBe(
-        'BENİMLE BİRLİKTE 1+ GRUPTA',
-      );
+      expect('benimle birlikte 1+ grupta'.toLocaleUpperCase('tr')).toBe('BENİMLE BİRLİKTE 1+ GRUPTA');
     });
   });
 
@@ -57,6 +59,7 @@ describeIfLocaleCasing('Turkic (tr, az) SpecialCasing', () => {
     });
 
     // Skipped on Hermes, the default engine: its Turkic lowercase keeps the dot after a non-Above mark.
+    // Tracked in https://github.com/Snapchat/Valdi/issues/215
     xit("preserves 'I' + non-Above mark + dot as absorbed", () => {
       // I + U+0327 (cedilla, ccc=202 Below) + U+0307.
       // Before_Dot allows non-Above marks to intervene, so I stays;
@@ -65,7 +68,7 @@ describeIfLocaleCasing('Turkic (tr, az) SpecialCasing', () => {
       expect('İ̧'.toLocaleLowerCase('tr')).toBe('i̧');
     });
 
-    it("does NOT absorb U+0307 when an Above mark intervenes", () => {
+    it('does NOT absorb U+0307 when an Above mark intervenes', () => {
       // I + U+0301 (acute, ccc=230 Above) + U+0307. Above intervening
       // breaks Before_Dot AND After_I:
       //   - Before_Dot fails → I becomes ı
@@ -90,7 +93,7 @@ describeIfLocaleCasing('Lithuanian (lt) SpecialCasing', () => {
       expect('Į́'.toLocaleLowerCase('lt')).toBe('į̇́');
     });
 
-    it("does NOT add dot without a following Above mark", () => {
+    it('does NOT add dot without a following Above mark', () => {
       expect('I'.toLocaleLowerCase('lt')).toBe('i');
     });
 
@@ -116,6 +119,7 @@ describeIfLocaleCasing('Locale-independent rules (regression)', () => {
   });
 
   // Skipped on Hermes, the default engine: toUpperCase doesn't apply the unconditional ß → SS mapping.
+  // Tracked in https://github.com/Snapchat/Valdi/issues/215
   xit('applies unconditional ß → SS under uppercase', () => {
     expect('ß'.toUpperCase()).toBe('SS');
     expect('ß'.toLocaleUpperCase('en')).toBe('SS');
@@ -141,7 +145,7 @@ describeIfLocaleCasing('Locale argument shapes (ECMA-402 first-locale-wins)', ()
     expect('i'.toLocaleUpperCase(['tr', 'en'])).toBe('İ');
   });
 
-  it("ignores a Turkic tag beyond index 0", () => {
+  it('ignores a Turkic tag beyond index 0', () => {
     expect('i'.toLocaleUpperCase(['en', 'tr'])).toBe('I');
   });
 
@@ -159,6 +163,7 @@ describeIfLocaleCasing('Locale argument shapes (ECMA-402 first-locale-wins)', ()
   });
 
   // Skipped on Hermes, the default engine: toLocaleUpperCase throws on non-dense locale lists.
+  // Tracked in https://github.com/Snapchat/Valdi/issues/215
   xit('resolves through sparse array holes to the first defined tag', () => {
     // Per ECMA-402 CanonicalizeLocaleList: iterate with HasProperty
     // and skip holes. First defined element wins.
@@ -175,6 +180,7 @@ describeIfLocaleCasing('Locale argument shapes (ECMA-402 first-locale-wins)', ()
   });
 
   // Skipped on Hermes, the default engine: toLocaleUpperCase throws on array-like locale lists.
+  // Tracked in https://github.com/Snapchat/Valdi/issues/215
   xit('accepts array-like objects (ToObject then iterate)', () => {
     const arrayLike: any = { 0: 'tr', length: 1 };
     expect('i'.toLocaleUpperCase(arrayLike)).toBe('İ');
@@ -184,6 +190,7 @@ describeIfLocaleCasing('Locale argument shapes (ECMA-402 first-locale-wins)', ()
   });
 
   // Skipped on Hermes, the default engine: toLocaleUpperCase throws on undefined/null locale entries.
+  // Tracked in https://github.com/Snapchat/Valdi/issues/215
   xit('skips undefined/null elements when scanning', () => {
     expect('i'.toLocaleUpperCase([undefined as any, 'tr'])).toBe('İ');
     expect('i'.toLocaleUpperCase([null as any, 'tr'])).toBe('İ');

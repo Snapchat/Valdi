@@ -170,6 +170,7 @@ describe('NamespaceGenerator', () => {
   });
 
   // Does not yet work
+  // Tracked in https://github.com/Snapchat/Valdi/issues/217
   xit('supports nested map messages in monkey patched js namespace', () => {
     const MapMessage = getTypedMessageNamespace<test.IMapMessage>(namespace => namespace.test?.MapMessage);
 

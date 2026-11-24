@@ -113,6 +113,7 @@ describe('JSX', () => {
   });
 
   // Skipped: the standalone test host renders <glass> as SCValdiView, not SCValdiGlassView.
+  // Tracked in https://github.com/Snapchat/Valdi/issues/216
   xit('can render a glass element with children and passes glass attributes through', async () => {
     class GlassComponent extends Component {
       onRender() {
