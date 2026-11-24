@@ -26,7 +26,18 @@ StandaloneResourceLoader::~StandaloneResourceLoader() = default;
 
 Result<BytesView> StandaloneResourceLoader::loadModuleContent(const StringBox& module) {
     std::unique_lock<Mutex> lock(_mutex);
-    // Search in statically registered modules first
+    // Explicitly provided module files take precedence over the copies embedded in the binary, so that
+    // callers like test runners load the build they asked for (e.g. one instrumented for code coverage).
+    // If the file can't be read, the embedded copy is used as a backup.
+    const auto& modulePathIt = _pathByModule.find(module);
+    if (modulePathIt != _pathByModule.end()) {
+        auto loadResult = DiskUtils::load(modulePathIt->second);
+        if (loadResult || _staticResourceByModule.find(module) == _staticResourceByModule.end()) {
+            return loadResult;
+        }
+    }
+
+    // Search in statically registered modules second
     const auto& moduleContentIt = _staticResourceByModule.find(module);
     if (moduleContentIt != _staticResourceByModule.end()) {
         const auto& resource = moduleContentIt->second;
@@ -39,12 +50,6 @@ Result<BytesView> StandaloneResourceLoader::loadModuleContent(const StringBox& m
         } else {
             return BytesView(nullptr, resource.bytes, resource.length);
         }
-    }
-
-    // Search in files second
-    const auto& modulePathIt = _pathByModule.find(module);
-    if (modulePathIt != _pathByModule.end()) {
-        return DiskUtils::load(modulePathIt->second);
     }
 
     // Otherwise look in module search directories
