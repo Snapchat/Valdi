@@ -122,6 +122,10 @@ jobs:
           service_account_ro: ${{ vars.GCP_SERVICE_ACCOUNT_RO }}
           cache_bucket: ${{ vars.BAZEL_CACHE_BUCKET }}
           cache_key: android-instrumentation-tests
+          # The remote cache already serves outputs. A multi-GB disk cache entry pushes this job's
+          # repository cache (the Maven jars) out of the repo's 10 GB Actions cache limit, and a
+          # cold run then hits Maven Central's 429s.
+          disk_cache: 'false'
 
       - name: Restore CI download cache
         uses: ./.github/actions/download-cache

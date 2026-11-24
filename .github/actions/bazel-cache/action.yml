@@ -189,7 +189,12 @@ runs:
           echo "build:ci --disk_cache=$HOME/.cache/bazel/disk" >> .bazelrc.local
         fi
         echo "build:ci --repository_cache=$HOME/.cache/bazel/repo" >> .bazelrc.local
+        # Maven Central answers bursts from shared runner IPs with 429. Bazel treats a 429 as a
+        # plain IOException inside the HTTP connector, so only --http_connector_attempts (default 8,
+        # about 13s of backoff in total) retries it. The downloader retries flag does not.
+        echo "build:ci --http_connector_attempts=12" >> .bazelrc.local
         if [ -n "$BAZEL_CACHE_RC" ]; then
+          echo "build --http_connector_attempts=12" >> "$BAZEL_CACHE_RC"
           if [ "$DISK_CACHE" != "false" ]; then
             echo "build --disk_cache=$HOME/.cache/bazel/disk" >> "$BAZEL_CACHE_RC"
           fi
