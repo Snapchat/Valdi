@@ -95,8 +95,8 @@
     id<UIApplicationDelegate> applicationDelegate = UIApplication.sharedApplication.delegate;
     if (![applicationDelegate isKindOfClass:[SCValdiBootstrappingAppDelegate class]]) {
         [NSException raise:NSInternalInconsistencyException
-                    format:@"SCValdiBootstrappingSceneDelegate requires an SCValdiBootstrappingAppDelegate"];
-        return;
+                    format:@"SCValdiBootstrappingSceneDelegate requires an SCValdiBootstrappingAppDelegate; "
+                           @"see docs/TROUBLESHOOTING.md#ios-27-uiscene"];
     }
 
     UIWindow* window = [[UIWindow alloc] initWithWindowScene:(UIWindowScene*)scene];
