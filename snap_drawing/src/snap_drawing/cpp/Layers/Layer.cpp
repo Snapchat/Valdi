@@ -1092,9 +1092,12 @@ void Layer::removeGestureRecognizer(const Valdi::Ref<GestureRecognizer>& gesture
 }
 
 void Layer::setHoverListener(HoverListener hoverListener) {
-    auto hadHoverListener = hasHoverListener();
-    _hoverListener = std::move(hoverListener);
-    if (hadHoverListener != hasHoverListener()) {
+    auto hadListener = hasHoverListener();
+    auto previousListener = std::exchange(_hoverListener, std::move(hoverListener));
+    if (hadListener != hasHoverListener()) {
+        if (hadListener) {
+            dispatchHoverExit(previousListener, true);
+        }
         onHitTestChanged();
     }
 }
@@ -1110,12 +1113,31 @@ bool Layer::hasHoverListener() const {
     return static_cast<bool>(_hoverListener);
 }
 
-void Layer::notifyHover(const HoverEvent& event) {
-    // A copy, as the listener may replace itself.
-    auto hoverListener = _hoverListener;
-    if (hoverListener) {
-        hoverListener(*this, event);
+bool Layer::updateHover(Point location) {
+    if (!hasHoverListener() || _hoverLocation == location) {
+        return false;
     }
+    auto type = _hoverLocation ? HoverEventTypeMoved : HoverEventTypeEntered;
+    _hoverLocation = location;
+    auto listener = _hoverListener;
+    listener(*this, HoverEvent{type, location});
+    return true;
+}
+
+bool Layer::exitHover() {
+    return dispatchHoverExit(_hoverListener, false);
+}
+
+bool Layer::dispatchHoverExit(const HoverListener& listener, bool detached) {
+    auto location = std::exchange(_hoverLocation, std::nullopt);
+    if (!location) {
+        return false;
+    }
+
+    // The callback can replace or reset itself.
+    auto callback = listener;
+    callback(*this, HoverEvent{HoverEventTypeExited, *location, detached});
+    return true;
 }
 
 std::optional<size_t> Layer::indexOfGestureRecognizerOfType(const std::type_info& type) const {

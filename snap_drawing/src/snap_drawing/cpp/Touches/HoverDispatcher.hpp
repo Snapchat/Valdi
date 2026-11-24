@@ -14,6 +14,9 @@ namespace snap::drawing {
  hitTest and coordinate conversions as TouchDispatcher, so a layer covering another blocks hover as it blocks touches.
  Only that layer is hovered. An ancestor with its own listener is exited when the pointer moves onto it.
 
+ Replacing a hovered layer's listener keeps its hover state and sends later events to the replacement.
+ Clearing the listener ends that hover immediately, even when the layer is rebound before the next hit test.
+
  Hover never takes part in gesture recognition: it captures no gesture recognizers and leaves touches untouched.
  */
 class HoverDispatcher {
@@ -45,7 +48,6 @@ public:
 private:
     std::optional<Point> _location;
     Valdi::Weak<Layer> _hoveredLayer;
-    Point _hoveredLocation = Point::makeEmpty();
     bool _dispatching = false;
     bool _needsUpdate = false;
 

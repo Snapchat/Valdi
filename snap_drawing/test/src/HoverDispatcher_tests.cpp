@@ -4,6 +4,7 @@
 
 #include "snap_drawing/cpp/Layers/ScrollLayer.hpp"
 
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -308,6 +309,48 @@ TEST_F(HoverDispatcherTest, forgetsLayerReleasedWhileHovered) {
     ASSERT_EQ(nullptr, root->getHoverDispatcher().getHoveredLayer());
 }
 
+TEST_F(HoverDispatcherTest, releasesListenerOfLayerFreedWhileHovered) {
+    auto child = createView(10, 10, 30, 30);
+    rootView->addChild(child);
+    auto token = std::make_shared<int>(0);
+    child->setHoverListener([token](Layer& /*hovered*/, const HoverEvent& /*event*/) {});
+
+    hover(15, 20);
+    ASSERT_EQ(2, token.use_count());
+
+    child->removeFromParent();
+    child = nullptr;
+    ASSERT_EQ(1, token.use_count());
+}
+
+TEST_F(HoverDispatcherTest, entersOnlyTheListenerTheTargetHasAfterTheExit) {
+    auto left = createView(10, 10, 20, 20);
+    auto right = createView(50, 10, 20, 20);
+    rootView->addChild(left);
+    rootView->addChild(right);
+    listen(right);
+    std::vector<HoverRecord> replacementEvents;
+    left->setHoverListener([&](Layer& hovered, const HoverEvent& event) {
+        events.emplace_back(HoverRecord{&hovered, event.type, event.location});
+        if (event.type == HoverEventTypeExited) {
+            right->setHoverListener([&](Layer& replaced, const HoverEvent& replacedEvent) {
+                replacementEvents.emplace_back(HoverRecord{&replaced, replacedEvent.type, replacedEvent.location});
+            });
+        }
+    });
+
+    hover(15, 15);
+    takeEvents();
+    hover(55, 15);
+    settle();
+    // right's first listener was replaced before it could be entered, so it hears nothing.
+    ASSERT_EQ(std::vector<HoverRecord>({exited(left, 5, 5)}), takeEvents());
+    ASSERT_EQ(std::vector<HoverRecord>({entered(right, 5, 5)}), replacementEvents);
+
+    leave();
+    ASSERT_EQ(std::vector<HoverRecord>({entered(right, 5, 5), exited(right, 5, 5)}), replacementEvents);
+}
+
 TEST_F(HoverDispatcherTest, movesToAncestorWhenListenerIsCleared) {
     auto parent = createView(10, 10, 60, 60);
     auto child = createView(10, 10, 20, 20);
@@ -321,7 +364,67 @@ TEST_F(HoverDispatcherTest, movesToAncestorWhenListenerIsCleared) {
 
     child->setHoverListener(HoverListener());
     processFrame();
-    ASSERT_EQ(std::vector<HoverRecord>({entered(parent, 15, 15)}), takeEvents());
+    // The cleared listener heard the pointer arrive, so it hears it leave.
+    ASSERT_EQ(std::vector<HoverRecord>({exited(child, 5, 5), entered(parent, 15, 15)}), takeEvents());
+}
+
+TEST_F(HoverDispatcherTest, exitsClearedListenerWhenPointerLeaves) {
+    auto child = createView(10, 10, 30, 30);
+    rootView->addChild(child);
+    listen(child);
+
+    hover(15, 20);
+    takeEvents();
+
+    child->setHoverListener(HoverListener());
+    ASSERT_EQ(std::vector<HoverRecord>({exited(child, 5, 10)}), takeEvents());
+
+    leave();
+    ASSERT_TRUE(takeEvents().empty());
+}
+
+TEST_F(HoverDispatcherTest, replacingListenerKeepsHoverUnderStillPointer) {
+    auto child = createView(10, 10, 30, 30);
+    rootView->addChild(child);
+    listen(child);
+
+    hover(15, 20);
+    ASSERT_EQ(std::vector<HoverRecord>({entered(child, 5, 10)}), takeEvents());
+
+    std::vector<HoverRecord> replacementEvents;
+    child->setHoverListener([&](Layer& layer, const HoverEvent& event) {
+        replacementEvents.emplace_back(HoverRecord{&layer, event.type, event.location});
+    });
+    settle();
+    ASSERT_TRUE(takeEvents().empty());
+    ASSERT_TRUE(replacementEvents.empty());
+
+    leave();
+    ASSERT_EQ(std::vector<HoverRecord>({exited(child, 5, 10)}), replacementEvents);
+}
+
+TEST_F(HoverDispatcherTest, entersNewListenerOfReusedLayerUnderStillPointer) {
+    auto child = createView(10, 10, 30, 30);
+    rootView->addChild(child);
+    listen(child);
+
+    hover(15, 20);
+    ASSERT_EQ(std::vector<HoverRecord>({entered(child, 5, 10)}), takeEvents());
+
+    // As a view pool hands the layer to a new element within one render: reset, then the new element's listener.
+    child->setHoverListener(HoverListener());
+    ASSERT_EQ(std::vector<HoverRecord>({exited(child, 5, 10)}), takeEvents());
+    std::vector<HoverRecord> newListenerEvents;
+    child->setHoverListener([&](Layer& hovered, const HoverEvent& event) {
+        newListenerEvents.emplace_back(HoverRecord{&hovered, event.type, event.location});
+    });
+    settle();
+    ASSERT_TRUE(takeEvents().empty());
+    ASSERT_EQ(std::vector<HoverRecord>({entered(child, 5, 10)}), newListenerEvents);
+
+    leave();
+    ASSERT_TRUE(takeEvents().empty());
+    ASSERT_EQ(std::vector<HoverRecord>({entered(child, 5, 10), exited(child, 5, 10)}), newListenerEvents);
 }
 
 TEST_F(HoverDispatcherTest, entersLayerGainingListenerUnderStillPointer) {

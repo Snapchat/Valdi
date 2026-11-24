@@ -52,27 +52,18 @@ bool HoverDispatcher::update(const Valdi::Ref<Layer>& rootLayer) {
         }
     }
 
-    Valdi::Ref<Layer> previous = _hoveredLayer.lock();
+    auto previous = _hoveredLayer.lock();
     if (previous == target) {
-        if (target != nullptr && targetLocation != _hoveredLocation) {
-            _hoveredLocation = targetLocation;
-            target->notifyHover(HoverEvent{HoverEventTypeMoved, targetLocation});
-            return true;
-        }
-        return false;
+        return target != nullptr && target->updateHover(targetLocation);
     }
 
-    auto previousLocation = _hoveredLocation;
-    _hoveredLayer = target;
-    _hoveredLocation = targetLocation;
-
-    if (previous != nullptr) {
-        previous->notifyHover(HoverEvent{HoverEventTypeExited, previousLocation});
+    _hoveredLayer.reset();
+    auto notified = previous != nullptr && previous->exitHover();
+    if (target != nullptr && !_needsUpdate && target->hasHoverListener()) {
+        _hoveredLayer = target;
+        notified = target->updateHover(targetLocation) || notified;
     }
-    if (target != nullptr) {
-        target->notifyHover(HoverEvent{HoverEventTypeEntered, targetLocation});
-    }
-    return true;
+    return notified;
 }
 
 bool HoverDispatcher::hasPendingUpdate() const {

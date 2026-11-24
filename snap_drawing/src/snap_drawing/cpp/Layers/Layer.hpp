@@ -227,7 +227,10 @@ public:
      */
     void setHoverListener(HoverListener hoverListener);
     bool hasHoverListener() const;
-    void notifyHover(const HoverEvent& event);
+    /** Updates the hover position for a layer with a listener and emits an enter or move when it changes. */
+    bool updateHover(Point location);
+    /** Ends this layer's current hover, if any. */
+    bool exitHover();
 
     const Ref<RefCountable>& getAttachedData() const;
     virtual void setAttachedData(const Ref<RefCountable>& attachedData);
@@ -255,10 +258,13 @@ protected:
     virtual std::string_view getClassName() const;
 
 private:
+    bool dispatchHoverExit(const HoverListener& listener, bool detached);
+
     Ref<Resources> _resources;
     SafeContainer<std::vector<Valdi::Ref<Layer>>> _children;
     SafeContainer<std::vector<Valdi::Ref<GestureRecognizer>>> _gestureRecognizers;
     HoverListener _hoverListener;
+    std::optional<Point> _hoverLocation;
     SafeContainer<Valdi::FlatMap<String, Ref<IAnimation>>> _animations;
     Valdi::Weak<ILayer> _parent;
     ILayerRoot* _root = nullptr;

@@ -25,6 +25,8 @@
 #include "snap_drawing/cpp/Touches/TouchGestureRecognizer.hpp"
 #include "utils/debugging/Assert.hpp"
 
+#include <utility>
+
 namespace snap::drawing {
 
 class ValdiMaskLayer : public PaintMaskLayer {
@@ -819,23 +821,47 @@ static void populateHoverEvent(const Valdi::ViewNode& viewNode, const HoverEvent
     populatePoint(Point(absolute.x, absolute.y), kAbsoluteX, kAbsoluteY, value);
 }
 
+static void populateDetachedHoverExit(Valdi::Value& value) {
+    value.setMapValue(STRING_LITERAL("hovered"), Valdi::Value(false));
+    value.setMapValue(STRING_LITERAL("detached"), Valdi::Value(true));
+    populatePoint(Point(0, 0), STRING_LITERAL("x"), STRING_LITERAL("y"), value);
+    populatePoint(Point(0, 0), STRING_LITERAL("absoluteX"), STRING_LITERAL("absoluteY"), value);
+}
+
 // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
 Valdi::Result<Valdi::Void> LayerClass::apply_onHoverChange(Layer& view,
                                                            const Valdi::Ref<Valdi::ValueFunction>& value,
                                                            const AttributeContext& /*context*/) {
-    view.setHoverListener([value](Layer& layer, const HoverEvent& event) {
+    // Reapplying the attribute preserves the element's enter state. Pooling resets the attribute and the layer data.
+    auto data = getValdiLayerData(view);
+    if (data == nullptr) {
+        // A root's attributes can be applied before the transaction associates its ViewNode.
+        data = Valdi::makeShared<ValdiLayerData>();
+        view.setAttachedData(data);
+    }
+    view.setHoverListener([value, data](Layer& /*layer*/, const HoverEvent& event) {
         // Only the changes: a call per pointer move would re-render whatever the handler updates on every move.
         if (event.type == HoverEventTypeMoved) {
             return;
         }
-        // A layer removed while hovered has no view node left to place the event in, and its element is gone, as
-        // onHoverChange's docs warn.
-        auto viewNode = valdiViewNodeFromLayer(layer);
-        if (viewNode == nullptr) {
-            return;
-        }
         Valdi::Value jsEvent;
-        populateHoverEvent(*viewNode, event, jsEvent);
+        auto viewNode = data->viewNode.lock();
+        if (event.type == HoverEventTypeEntered) {
+            if (viewNode == nullptr) {
+                return;
+            }
+            data->deliveredHoverEnter = true;
+            populateHoverEvent(*viewNode, event, jsEvent);
+        } else {
+            if (!std::exchange(data->deliveredHoverEnter, false)) {
+                return;
+            }
+            if (event.detached || viewNode == nullptr) {
+                populateDetachedHoverExit(jsEvent);
+            } else {
+                populateHoverEvent(*viewNode, event, jsEvent);
+            }
+        }
         callEventHandler(value, jsEvent);
     });
     return Valdi::Void();

@@ -22,6 +22,12 @@ class DrawableSurfaceCanvas;
 Valdi::Ref<Valdi::View> layerToValdiView(const Valdi::Ref<Layer>& layer, bool makeStrongRef);
 Valdi::Ref<Layer> valdiViewToLayer(const Valdi::Ref<Valdi::View>& view);
 
+struct ValdiLayerData : public Valdi::SimpleRefCountable {
+    Valdi::Weak<Valdi::ViewNode> viewNode;
+    bool deliveredHoverEnter = false;
+};
+
+Valdi::Ref<ValdiLayerData> getValdiLayerData(const Layer& layer);
 Valdi::Ref<Valdi::ViewNode> valdiViewNodeFromLayer(const Layer& layer);
 void setValdiViewNodeToLayer(Layer& layer, Valdi::ViewNode* viewNode);
 

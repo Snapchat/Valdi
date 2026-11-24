@@ -60,6 +60,9 @@ export interface HoverEvent extends GestureEvent, Point {
    */
   hovered: boolean;
 
+  /** True on an exit with unavailable coordinates, such as when the view is removed. */
+  detached?: true;
+
   /**
    * X Position from within the element
    */

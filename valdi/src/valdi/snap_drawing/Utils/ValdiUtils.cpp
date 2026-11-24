@@ -49,32 +49,30 @@ Scalar resolveDeltaX(const Layer& layer, Scalar deltaX) {
     }
 }
 
-struct ViewNodeHolder : public Valdi::SimpleRefCountable {
-    Valdi::Weak<Valdi::ViewNode> viewNode;
-};
+Valdi::Ref<ValdiLayerData> getValdiLayerData(const Layer& layer) {
+    return Valdi::castOrNull<ValdiLayerData>(layer.getAttachedData());
+}
 
 Valdi::Ref<Valdi::ViewNode> valdiViewNodeFromLayer(const Layer& layer) {
-    auto viewNodeHolder = dynamic_cast<ViewNodeHolder*>(layer.getAttachedData().get());
-    if (viewNodeHolder == nullptr) {
+    auto* data = dynamic_cast<ValdiLayerData*>(layer.getAttachedData().get());
+    if (data == nullptr) {
         return nullptr;
     }
 
-    return Valdi::Ref<Valdi::ViewNode>(viewNodeHolder->viewNode.lock());
+    return Valdi::Ref<Valdi::ViewNode>(data->viewNode.lock());
 }
 
 void setValdiViewNodeToLayer(Layer& layer, Valdi::ViewNode* viewNode) {
-    Ref<ViewNodeHolder> viewNodeHolder = Valdi::castOrNull<ViewNodeHolder>(layer.getAttachedData());
-    if (viewNodeHolder == nullptr) {
-        viewNodeHolder = Valdi::makeShared<ViewNodeHolder>();
+    auto data = getValdiLayerData(layer);
+    if (data == nullptr) {
+        data = Valdi::makeShared<ValdiLayerData>();
     }
-
     if (viewNode == nullptr) {
-        viewNodeHolder->viewNode.reset();
+        data->viewNode.reset();
     } else {
-        viewNodeHolder->viewNode = Valdi::weakRef(viewNode);
+        data->viewNode = Valdi::weakRef(viewNode);
     }
-
-    layer.setAttachedData(viewNodeHolder);
+    layer.setAttachedData(data);
 }
 
 Valdi::Ref<Valdi::View> bridgeViewFromView(const Valdi::Ref<Valdi::View>& view) {

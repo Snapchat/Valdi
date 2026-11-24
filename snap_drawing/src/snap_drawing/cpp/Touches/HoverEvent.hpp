@@ -19,6 +19,8 @@ struct HoverEvent {
     // In the coordinates of the layer receiving the event. For HoverEventTypeExited, the last location the layer
     // was told about.
     Point location;
+    // Only set on an exit caused by clearing the listener.
+    bool detached = false;
 };
 
 using HoverListener = Valdi::Function<void(Layer&, const HoverEvent&)>;

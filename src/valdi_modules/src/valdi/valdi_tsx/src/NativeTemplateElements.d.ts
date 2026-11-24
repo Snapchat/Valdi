@@ -821,7 +821,10 @@ interface ViewAttributes {
   /**
    * Event handler called when a hovering pointer, such as a mouse or a hand ray, starts or stops being over this
    * view. Only the innermost view with an onHoverChange under the pointer is hovered, and a view covering another
-   * blocks hover the way it blocks touches. A view removed while hovered may not be told it stopped being hovered.
+   * blocks hover the way it blocks touches. Replacing the handler preserves the view's hover state, and its current
+   * handler receives the exit. Removing the view or clearing the handler sends a detached exit with zero coordinates.
+   * A detached exit can arrive after the owning component is destroyed. Check `this.isDestroyed()` before
+   * calling `setState` from the handler.
    * Only renderers with a hovering pointer call it; elsewhere it is ignored.
    */
   onHoverChange?: (event: HoverEvent) => void;
