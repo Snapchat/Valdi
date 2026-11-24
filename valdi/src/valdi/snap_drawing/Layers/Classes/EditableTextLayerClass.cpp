@@ -7,6 +7,7 @@
 
 #include "snap_drawing/cpp/Resources.hpp"
 #include "valdi/runtime/Context/ViewNode.hpp"
+#include "valdi/runtime/Context/ViewNodeTree.hpp"
 #include "valdi/snap_drawing/Utils/AttributedTextParser.hpp"
 #include "valdi/snap_drawing/Utils/AttributesBinderUtils.hpp"
 #include "valdi/snap_drawing/Utils/ValdiUtils.hpp"
@@ -372,9 +373,13 @@ void EditableTextLayerListenerImpl::onEditBegin(EditableTextLayer& layer) {
 }
 
 void EditableTextLayerListenerImpl::onChange(EditableTextLayer& layer) {
-    // As the iOS and Android fields do, so a page that sets the value back, or focuses again, isn't deduplicated away.
+    // As the iOS and Android fields do: store the value, so a page that sets it back, or focuses again, isn't
+    // deduplicated away, and remeasure, since that same deduplication leaves a field sized by its text at its old size.
     if (auto viewNode = valdiViewNodeFromLayer(layer); viewNode != nullptr) {
         viewNode->valueChanged(viewNode->getAttributeIds().getIdForName("value"), Valdi::Value(layer.getText()));
+        if (auto* viewNodeTree = viewNode->getViewNodeTree(); viewNodeTree != nullptr) {
+            viewNodeTree->withLock([&]() { viewNode->invalidateMeasuredSize(); });
+        }
     }
     call(onChangeFn, makeEditTextEvent(layer));
 }

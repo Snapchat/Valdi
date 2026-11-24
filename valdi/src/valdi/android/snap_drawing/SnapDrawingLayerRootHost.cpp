@@ -157,7 +157,10 @@ void SnapDrawingLayerRootHost::setSurfaceNeedsRedraw(snap::drawing::SurfacePrese
     _drawLooper->setPresenterOfLayerRootNeedsRedraw(*_layerRoot, surfacePresenterId);
 }
 
-void SnapDrawingLayerRootHost::onSurfaceSizeChanged(snap::drawing::SurfacePresenterId surfacePresenterId) {}
+// The drawable surface picks up the new window size on its next frame.
+void SnapDrawingLayerRootHost::onSurfaceSizeChanged(snap::drawing::SurfacePresenterId surfacePresenterId) {
+    _drawLooper->setPresenterOfLayerRootNeedsRedraw(*_layerRoot, surfacePresenterId);
+}
 
 bool SnapDrawingLayerRootHost::dispatchTouchEvent(snap::drawing::TouchEventType type,
                                                   int64_t timeNanos,

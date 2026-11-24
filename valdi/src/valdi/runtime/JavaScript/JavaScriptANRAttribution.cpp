@@ -71,6 +71,10 @@ bool JavaScriptANRAttribution::empty() const {
     return _size == 0;
 }
 
+StringBox JavaScriptANRAttribution::getInnermostLabel() const {
+    return _size == 0 ? StringBox() : _frames[_size - 1];
+}
+
 std::string JavaScriptANRAttribution::format() const {
     if (empty()) {
         return {};

@@ -11,6 +11,7 @@
 #include "valdi/runtime/JavaScript/JSFunctionWithValueFunction.hpp"
 #include "valdi/runtime/JavaScript/JSPromise.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptFunctionCallContext.hpp"
+#include "valdi/runtime/JavaScript/JavaScriptRuntime.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptUtils.hpp"
 #include "valdi/runtime/JavaScript/ValueFunctionWithJSValue.hpp"
 
@@ -725,7 +726,16 @@ public:
           _taskScheduler(weakRef(jsContext.getTaskScheduler())),
           _resolve(jsContext.stashJSValue(std::move(resolve))),
           _reject(jsContext.stashJSValue(std::move(reject))),
-          _valueMarshaller(valueMarshaller) {}
+          _valueMarshaller(valueMarshaller) {
+        // Native code settles the promise from its own thread, so the JS that continues after it inherits no
+        // breadcrumb. Name it after the bridged call that returned the promise: the innermost frame while its return
+        // value is converted. Only copy the label here; fulfill() builds the name off the JS thread.
+        auto* runtime = dynamic_cast<JavaScriptRuntime*>(jsContext.getTaskScheduler());
+        _namesFulfill = runtime != nullptr && runtime->anrDiagnosticsActiveOnJsThread();
+        if (_namesFulfill) {
+            _returningCall = runtime->getInnermostANRAttributionLabel();
+        }
+    }
 
     ~JSBridgedPromiseCallback() override {
         auto taskScheduler = _taskScheduler.lock();
@@ -752,12 +762,29 @@ private:
     JSValueID _resolve;
     JSValueID _reject;
     Ref<ValueMarshaller<JSValueRef>> _valueMarshaller;
+    bool _namesFulfill = false;
+    StringBox _returningCall;
+
+    // "<call>.<r>", the way JSPromise names a JS promise's completion.
+    StringBox makeFulfillAttribution() const {
+        if (!_namesFulfill) {
+            return StringBox();
+        }
+        if (_returningCall.isEmpty()) {
+            return STRING_LITERAL("runtime.fulfillPromise");
+        }
+        return JavaScriptANRAttribution::boundedLabel(STRING_FORMAT("{}.<r>", _returningCall));
+    }
 
     void fulfill(const Result<Value>& result) {
         auto taskScheduler = _taskScheduler.lock();
         if (taskScheduler != nullptr) {
-            taskScheduler->dispatchOnJsThreadAsyncAfter(
-                _context, 0, [self = Valdi::strongSmallRef(this), result](const JavaScriptEntryParameters& jsEntry) {
+            taskScheduler->dispatchOnJsThread(
+                _context,
+                makeFulfillAttribution(),
+                JavaScriptTaskScheduleTypeAlwaysAsync,
+                0,
+                [self = Valdi::strongSmallRef(this), result](const JavaScriptEntryParameters& jsEntry) {
                     self->doFullfill(result, jsEntry);
                 });
         }

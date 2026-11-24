@@ -38,6 +38,8 @@ public:
     void pop(RestoreToken token);
 
     bool empty() const;
+    /** The innermost frame's label, or empty when there are no frames. */
+    StringBox getInnermostLabel() const;
     std::string format() const;
 
 private:

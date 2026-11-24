@@ -79,6 +79,16 @@ public:
             return result.moveError();
         }
 
+        // The window resizes with its view, while the wrapped framebuffer keeps the size it was wrapped at.
+        const auto width = ANativeWindow_getWidth(_nativeWindow);
+        const auto height = ANativeWindow_getHeight(_nativeWindow);
+        const auto isValidSize = width > 0 && height > 0;
+        if (isValidSize && (width != _width || height != _height)) {
+            _width = width;
+            _height = height;
+            _surface = nullptr;
+        }
+
         if (_surface == nullptr) {
             int fbBOID;
             glGetIntegerv(GL_FRAMEBUFFER_BINDING_OES, &fbBOID);

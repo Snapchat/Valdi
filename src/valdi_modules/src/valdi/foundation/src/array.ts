@@ -52,3 +52,17 @@ export function partition<T>(arr: readonly T[], predicate: (element: T) => boole
     [[], []],
   );
 }
+
+/**
+ * Maps every element of an iterable with a transform, and leaves out the elements it returns undefined for
+ */
+export function compactMap<T, U>(elements: Iterable<T>, transform: (element: T) => U | undefined): U[] {
+  const result: U[] = [];
+  for (const element of elements) {
+    const transformed = transform(element);
+    if (transformed !== undefined) {
+      result.push(transformed);
+    }
+  }
+  return result;
+}

@@ -1106,15 +1106,17 @@ std::optional<ModuleArchiveCache::PublishContent> ModuleArchiveCache::compileFor
         BytesView bytes(entry.content.getSource(), file->data, file->size);
         auto pathView = path.toStringView();
         if (hasSuffix(pathView, ".js") && !compiler->isCompiled(bytes)) {
-            if (isUnderMemoryPressure()) {
-                return std::nullopt;
-            }
+            // The switch comes before the pressure check so that with compilation off, memory pressure never
+            // defers a publish.
             if (state.isEnabled != nullptr) {
                 if (!state.isEnabled()) {
                     state.turnedOff = true;
                     return original;
                 }
                 state.isEnabled = nullptr;
+            }
+            if (isUnderMemoryPressure()) {
+                return std::nullopt;
             }
             if (!state.engineStarted) {
                 state.engineStarted = true;

@@ -6,6 +6,11 @@
       "collapsible": false,
       "className": "not-collapsible",
       "items": [
+        {
+          "type": "doc",
+          "id": "docs/home",
+          "label": "Overview"
+        },
         "docs/start-about",
         "docs/choosing-valdi",
         "docs/start-install",
