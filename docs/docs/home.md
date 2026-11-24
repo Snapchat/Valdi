@@ -1,3 +1,7 @@
+---
+slug: /
+---
+
 # Valdi
 
 Valdi is a cross-platform UI framework that compiles declarative TypeScript components to native views on iOS, Android, and macOS. There are no web views and no JavaScript bridge. It has powered a large portion of Snap's production apps for 8 years.
