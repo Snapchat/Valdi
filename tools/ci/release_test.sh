@@ -61,6 +61,15 @@ node "$CLI_DIR/dist/index.js" bootstrap \
   -t=ui_application \
   --with-cleanup
 
+# The bootstrapped app must pin the same Bazel version Valdi CI tests.
+EXPECTED_BAZEL_VERSION="$(tr -d '[:space:]' < "$OPEN_SOURCE_DIR/.bazelversion")"
+ACTUAL_BAZEL_VERSION="$(bazel version --gnu_format 2>/dev/null | awk '$1 == "bazel" {print $2}')"
+if [[ "$ACTUAL_BAZEL_VERSION" != "$EXPECTED_BAZEL_VERSION" ]]; then
+  echo "ERROR: bootstrapped app runs Bazel $ACTUAL_BAZEL_VERSION, expected $EXPECTED_BAZEL_VERSION"
+  exit 1
+fi
+echo "Bazel $ACTUAL_BAZEL_VERSION matches repo .bazelversion ✓"
+
 # Verify the project references public GitHub (not local).
 # Bootstrapped projects may use MODULE.bazel (bzlmod) or WORKSPACE.
 if [[ -f MODULE.bazel ]]; then

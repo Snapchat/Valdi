@@ -167,9 +167,9 @@ for module_name in sorted(os.listdir(modules_dir)):
     print(f'single_version_override(module_name = \"{module_name}\", version = \"{version}\")')
 " "$REGISTRY_DIR")
 
-# Write .bazelversion
-cp "$OPEN_SOURCE_DIR/npm_modules/cli/.metadata/.bazelversion.template" "$CONSUMER_DIR/.bazelversion" 2>/dev/null \
-    || echo "7.2.1" > "$CONSUMER_DIR/.bazelversion"
+# Write .bazelversion. Pinned to the version this script validates against (USE_BAZEL_VERSION below),
+# not the bootstrap template: Bazel 8 rejects the empty res/** glob in @valdi//libs/dummy.
+echo "7.2.1" > "$CONSUMER_DIR/.bazelversion"
 
 # Write MODULE.bazel — a minimal consumer that depends on Valdi.
 # Toolchains are inherited from Valdi via the valdi_toolchains extension.

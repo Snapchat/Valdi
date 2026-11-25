@@ -4,6 +4,10 @@ common --registry=https://bcr.bazel.build
 
 common --enable_platform_specific_config
 
+# Bazel 8 flipped this to true by default; the generated module BUILD globs src/**/*.ts
+# and Valdi's own packages glob empty dirs.
+common --noincompatible_disallow_empty_glob
+
 # Disable workers for repo fetching to prevent OOM
 common --experimental_worker_for_repo_fetching=off
 

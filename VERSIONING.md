@@ -67,4 +67,4 @@ Support tiers describe what we commit to, not just what CI happens to run.
 | macOS deployment target | 15.0 and later |
 | Android | API 21 (Android 5.0) and later |
 | Node.js | 20 LTS or later |
-| Bazel | 8.x, with bzlmod. The exact version is pinned in [`.bazelversion`](./.bazelversion). |
+| Bazel | 8.x, with bzlmod. The exact version in [`.bazelversion`](./.bazelversion) is what we test and what new projects pin. |
