@@ -9,8 +9,9 @@ import {
   makeArgsBuilder,
 } from '../utils/applicationUtils';
 import type { CommandParameters} from '../utils/buildInfo';
-import { getBuildInfo } from '../utils/buildInfo';
+import { getBuildInfo, isDeviceBuild } from '../utils/buildInfo';
 import { installAndroidApk } from '../utils/deviceUtils';
+import { getDeveloperDir, installAndLaunchOnSimulator, needsSimctlInstall } from '../utils/iosSimulator';
 import { logReproduceThisCommandIfNeeded, makeCommandHandler } from '../utils/errorUtils';
 import { makeTempDir } from '../utils/tempDir';
 import { wrapInColor } from '../utils/logUtils';
@@ -52,7 +53,17 @@ async function valdiInstall(argv: ArgumentsResolver<InstallCommandParameters>) {
     }
     case PLATFORM.IOS: {
       console.log('Installing iOS application...');
-      await bazel.runTarget(buildInfo.application, buildInfo.bazelArgs);
+      const developerDir = await getDeveloperDir();
+      if (isDeviceBuild(argv.getArgument('simulator')) || !needsSimctlInstall(developerDir)) {
+        await bazel.runTarget(buildInfo.application, buildInfo.bazelArgs);
+      } else {
+        const outputFilePath = await argv.getArgumentOrResolve('target_output_path', () => {
+          console.log('Resolving output paths...');
+          return getOutputFilePath(bazel, applicationExtensionForPlatform(buildInfo.platform), buildInfo.application, buildInfo.bazelArgs);
+        });
+        await bazel.buildTarget(buildInfo.application, buildInfo.bazelArgs);
+        await installAndLaunchOnSimulator(outputFilePath, { deviceId: argv.getArgument('device_id'), developerDir });
+      }
       logReproduceThisCommandIfNeeded(argv);
       break;
     }
