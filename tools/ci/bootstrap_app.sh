@@ -5,7 +5,7 @@ set -x
 
 # Should be run after cli is installed
 
-# We're not installing the ios_webkit_debug_proxy and we're not runnig any simulators at this point
+# We're not installing the ios_webkit_debug_proxy. Only the 'launch ios' smoke test starts a simulator
 # However we want the valdi doctor command to believe there is an ios_webkit_debug_proxy
 mkdir -p ~/bin
 export PATH=$HOME/bin:$PATH
@@ -48,7 +48,7 @@ if [[ $(uname) != Linux ]] ; then
         # with its own Bazel server. Group 3 runs every test that groups 1 and 2 do not list, so a new
         # or renamed test is never skipped.
         GROUP1='build android|valdi doctor|finds project references'
-        GROUP2='build ios|build macos|finds code completions'
+        GROUP2='build ios|launch ios|build macos|finds code completions'
         pids=()
         start_group() {
             local group=$1

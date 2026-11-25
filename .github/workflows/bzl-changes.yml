@@ -108,10 +108,11 @@ jobs:
           # (rust-lang/rust#157750), which macOS 26 runners can't catch. `build ios` and
           # `build macos` compile the Rust tool crates and the macOS SDK path; the full suite
           # is three cold workspaces, more than this runner's ~44 GB disk / 7 GB RAM (the two
-          # builds leave about 25 GB free).
+          # builds leave about 25 GB free). `launch ios` boots a simulator and starts the app: a
+          # build can't catch SDK-enforced startup rules such as the iOS 27 UIScene requirement.
           - runner: xcode-27
             xcode: '27.0.0'
-            test_name_pattern: 'build ios|build macos'
+            test_name_pattern: 'build ios|launch ios|build macos'
     runs-on: ${{ matrix.runner }}
 
     steps:

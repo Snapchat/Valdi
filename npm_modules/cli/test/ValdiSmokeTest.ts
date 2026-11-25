@@ -93,6 +93,15 @@ void describe('valdi ui app', () => {
       await buildWithCacheRetry('ios');
     });
 
+    // Compiling proves nothing about launching: UIKit enforces SDK-specific startup rules
+    // (e.g. the UIScene life cycle on the iOS 27 SDK) when the process starts, so a build can
+    // pass for an app that exits immediately.
+    void it('launch ios', { skip: process.platform !== 'darwin', timeout: 30 * 60_000 }, async () => {
+      await run('bash', [join(OPEN_SOURCE_DIR, 'tools/ci/ios_launch_smoke.sh'), PROJECT_ROOT], {
+        pipeOutput: true,
+      }).wait();
+    });
+
     void it('build macos', async () => {
       await buildWithCacheRetry('macos');
     });
