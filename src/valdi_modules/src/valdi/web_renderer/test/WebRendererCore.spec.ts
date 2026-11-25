@@ -4699,6 +4699,61 @@ describe('web renderer core', () => {
     expect(reported).toEqual({ x: 0, y: 0, width: 57, height: 21 });
   });
 
+  describe('attributed text outlines', () => {
+    function outlineStyle(style: {
+      outlineColor?: string;
+      outlineWidth?: number;
+      outerOutlineColor?: string;
+      outerOutlineWidth?: number;
+    }): string {
+      const attributedText = new AttributedTextBuilder().append('28', style).build();
+      const container = renderAttributedText(ParsedAttributedText.parse(attributedText)) as unknown as FakeElement;
+      return container.childNodes.item(0)!.style.webkitTextStroke;
+    }
+
+    it('applies the inner outline when only an outer color is also set', () => {
+      expect(outlineStyle({ outerOutlineColor: '#fef3c7', outlineColor: '#f59e0b', outlineWidth: 1 })).toBe(
+        '1px #f59e0b',
+      );
+    });
+
+    it('applies the outer outline when its color and width are both set', () => {
+      expect(
+        outlineStyle({
+          outerOutlineColor: '#fef3c7',
+          outerOutlineWidth: 2,
+          outlineColor: '#f59e0b',
+          outlineWidth: 1,
+        }),
+      ).toBe('2px #fef3c7');
+    });
+
+    it('never pairs an outer width with an inner color', () => {
+      expect(outlineStyle({ outerOutlineWidth: 2, outlineColor: '#f59e0b' })).toBeFalsy();
+    });
+
+    it('excludes only a complete outline pair from layout inflation', () => {
+      let reported: { width: number } | undefined;
+      const attributedText = new AttributedTextBuilder()
+        .append('28', {
+          onLayout: (_x, _y, width) => {
+            reported = { width };
+          },
+          outerOutlineColor: '#fef3c7',
+          outlineColor: '#f59e0b',
+          outlineWidth: 1,
+        })
+        .build();
+      const parsed = ParsedAttributedText.parse(attributedText);
+      const container = renderAttributedText(parsed) as unknown as FakeElement;
+      container.childNodes.item(0)!.rectWidth = 20;
+
+      dispatchAttributedTextLayouts(parsed, container as unknown as HTMLElement);
+
+      expect(reported).toEqual({ width: 18 });
+    });
+  });
+
   it('keeps tappable attributed text interactive inside pointer-transparent labels', () => {
     const attributedText = new AttributedTextBuilder().append('tap', { onTap: () => {} }).build();
     const container = renderAttributedText(ParsedAttributedText.parse(attributedText)) as unknown as FakeElement;

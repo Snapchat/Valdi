@@ -271,12 +271,10 @@ class AttributedTextLayoutObserver implements ElementLayoutObserver {
       const style = attributedText.parts[i].style;
       const onLayout = style.onLayout;
       if (onLayout) {
-        const outlineColor = style.outerOutlineColor ?? style.outlineColor;
-        const outlineWidth = style.outerOutlineWidth ?? style.outlineWidth;
         this.measurements.push({
           onLayout,
           span: container.childNodes.item(i) as HTMLSpanElement,
-          outlineWidth: outlineColor && outlineWidth ? outlineWidth : 0,
+          outlineWidth: resolveOutline(style)?.width ?? 0,
           x: 0,
           y: 0,
           width: 0,
@@ -395,16 +393,24 @@ function applyTextDecoration(span: HTMLSpanElement, decoration: LabelTextDecorat
   }
 }
 
-function applyOutline(
-  span: HTMLSpanElement,
-  color: string | undefined,
-  width: number | undefined,
-  context: AttributeApplierContext | undefined,
-): void {
-  if (!color || !width) {
+// Web has a single text stroke, so when both pairs are complete the outer outline wins.
+// Colors and widths are only ever paired within the same (inner or outer) outline.
+function resolveOutline(style: StyleState): { color: string; width: number } | undefined {
+  if (style.outerOutlineColor && style.outerOutlineWidth) {
+    return { color: style.outerOutlineColor, width: style.outerOutlineWidth };
+  }
+  if (style.outlineColor && style.outlineWidth) {
+    return { color: style.outlineColor, width: style.outlineWidth };
+  }
+  return undefined;
+}
+
+function applyOutline(span: HTMLSpanElement, style: StyleState, context: AttributeApplierContext | undefined): void {
+  const outline = resolveOutline(style);
+  if (!outline) {
     return;
   }
-  span.style.webkitTextStroke = `${width}px ${convertColor(color, context)}`;
+  span.style.webkitTextStroke = `${outline.width}px ${convertColor(outline.color, context)}`;
   span.style.paintOrder = 'stroke fill';
 }
 
@@ -492,12 +498,7 @@ function createStyledSpan(
   }
 
   applyTextDecoration(span, style.textDecoration);
-  applyOutline(
-    span,
-    style.outerOutlineColor ?? style.outlineColor,
-    style.outerOutlineWidth ?? style.outlineWidth,
-    context,
-  );
+  applyOutline(span, style, context);
 
   if (style.onTap) {
     span.style.cursor = 'pointer';
