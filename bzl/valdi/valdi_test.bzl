@@ -19,7 +19,7 @@ def _is_test_file(f, path_to_module):
     return "/test/" in path or path.endswith("/test")
 
 def _valdi_test_impl(ctx):
-    standalone_binary = ctx.executable._valdi_standalone_binary
+    standalone_binary = ctx.executable.standalone_binary
 
     path_to_module = ctx.label.package
     test_paths = [f for f in ctx.files.srcs if _is_test_file(f, path_to_module)]
@@ -109,11 +109,12 @@ valdi_test = rule(
             default = Label("@valdi//src/valdi_modules/src/valdi/valdi_standalone"),
             doc = "The Valdi Standalone target to be added to all Valdi targets",
         ),
-        "_valdi_standalone_binary": attr.label(
+        "standalone_binary": attr.label(
             executable = True,
             cfg = "exec",
             default = Label("@valdi_toolchain//:valdi_standalone"),
-            doc = "The Valdi Standalone binary used to run the test",
+            doc = "The Valdi Standalone binary used to run the test. Override it only for a module whose " +
+                  "specs need native code that the shared runner does not link.",
         ),
     },
 )

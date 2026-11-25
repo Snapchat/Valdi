@@ -323,23 +323,41 @@ void RuntimeManager::attachHotReloader(const Ref<Runtime>& runtime) {
     }
 }
 
+static void applyYogaTweaks(YGConfig* yogaConfig, const ValdiRuntimeTweaks* runtimeTweaks) {
+    YGConfigSetExperimentalFeatureEnabled(yogaConfig,
+                                          YGExperimentalFeatureFixFlexBasisFitContent,
+                                          runtimeTweaks != nullptr ? runtimeTweaks->enableFixFlexBasisFitContent() :
+                                                                     false);
+}
+
 Ref<ViewManagerContext> RuntimeManager::createViewManagerContext(
-    IViewManager& viewManager, bool enablePreloading, const Ref<MainThreadManager>& mainThreadManagerOverride) {
+    IViewManager& viewManager,
+    bool enablePreloading,
+    const Ref<MainThreadManager>& mainThreadManagerOverride,
+    const Shared<YGConfig>& yogaConfigOverride) {
     auto viewManagerContext = makeShared<ViewManagerContext>(
         viewManager,
         _attributeIds,
         _colorPaletteManager,
-        _yogaConfig,
+        yogaConfigOverride != nullptr ? yogaConfigOverride : _yogaConfig,
         enablePreloading,
         mainThreadManagerOverride != nullptr ? mainThreadManagerOverride : _mainThreadManager,
         *_logger);
 
+    // Held until the tweaks are applied so that a concurrent setTweakValueProvider() either sees this context or
+    // has already published the tweaks read below.
+    std::lock_guard<Mutex> contextsGuard(_viewManagerContextsMutex);
     _viewManagerContexts.emplace_back(viewManagerContext);
 
     Ref<ValdiRuntimeTweaks> runtimeTweaks;
     {
         std::lock_guard<Mutex> guard(_mutex);
         runtimeTweaks = _runtimeTweaks;
+    }
+
+    if (yogaConfigOverride != nullptr) {
+        applyYogaTweaks(yogaConfigOverride.get(), runtimeTweaks.get());
+        _yogaConfigOverrides.emplace_back(yogaConfigOverride);
     }
 
     // Seed the kill switch from the current tweaks so contexts created after the provider is set pick
@@ -466,7 +484,12 @@ void RuntimeManager::applicationWillTerminate() {
 }
 
 void RuntimeManager::clearViewPools() {
-    for (const auto& viewManagerContext : _viewManagerContexts) {
+    std::vector<Ref<ViewManagerContext>> viewManagerContexts;
+    {
+        std::lock_guard<Mutex> guard(_viewManagerContextsMutex);
+        viewManagerContexts = _viewManagerContexts;
+    }
+    for (const auto& viewManagerContext : viewManagerContexts) {
         viewManagerContext->clearViewPools();
     }
 }
@@ -484,7 +507,11 @@ void RuntimeManager::removeExpiredRuntimes() {
 
 void RuntimeManager::forceBindAttributes(const StringBox& className) {
     // Will lazily trigger the binding attributes if needed.
-    auto viewManagerContexts = _viewManagerContexts;
+    std::vector<Ref<ViewManagerContext>> viewManagerContexts;
+    {
+        std::lock_guard<Mutex> guard(_viewManagerContextsMutex);
+        viewManagerContexts = _viewManagerContexts;
+    }
 
     _workerQueue->async([viewManagerContexts, className]() {
         for (const auto& viewManagerContext : viewManagerContexts) {
@@ -724,10 +751,16 @@ void RuntimeManager::applyEffectiveTweakValueProvider() {
 
     _anrDetector->setNudgeEnabled(runtimeTweaks != nullptr ? runtimeTweaks->shouldNudgeJSThread() : false);
 
-    YGConfigSetExperimentalFeatureEnabled(_yogaConfig.get(),
-                                          YGExperimentalFeatureFixFlexBasisFitContent,
-                                          runtimeTweaks != nullptr ? runtimeTweaks->enableFixFlexBasisFitContent() :
-                                                                     false);
+    std::unique_lock<Mutex> contextsGuard(_viewManagerContextsMutex);
+    applyYogaTweaks(_yogaConfig.get(), runtimeTweaks.get());
+    for (auto it = _yogaConfigOverrides.begin(); it != _yogaConfigOverrides.end();) {
+        if (auto yogaConfigOverride = it->lock()) {
+            applyYogaTweaks(yogaConfigOverride.get(), runtimeTweaks.get());
+            ++it;
+        } else {
+            it = _yogaConfigOverrides.erase(it);
+        }
+    }
 
     auto disableAnimationRemoveOnCompleteIos =
         runtimeTweaks != nullptr ? runtimeTweaks->disableAnimationRemoveOnCompleteIos() : false;
@@ -740,6 +773,7 @@ void RuntimeManager::applyEffectiveTweakValueProvider() {
         viewManagerContext->setApplyManagedChildFramePadding(applyManagedChildFramePadding);
         viewManagerContext->setKeepsViewPoolingOnLayoutCallbacks(keepsViewPoolingOnLayoutCallbacks);
     }
+    contextsGuard.unlock();
 
     for (const auto& runtime : runtimes) {
         runtime->setRuntimeTweaks(runtimeTweaks);
