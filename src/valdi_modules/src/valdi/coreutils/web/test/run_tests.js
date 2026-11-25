@@ -72,7 +72,8 @@ fs.writeFileSync(
 );
 
 console.log('Running tests:', testFiles);
-const result = spawnSync('node', [jestBin, '--config', configPath, '--verbose', '--runTestsByPath', ...testFiles], {
+// Watchman can't create its state dir inside a read-only test sandbox, so Jest crawls files itself.
+const result = spawnSync('node', [jestBin, '--config', configPath, '--no-watchman', '--verbose', '--runTestsByPath', ...testFiles], {
   stdio: 'inherit',
   cwd: testDir,
 });

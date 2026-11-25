@@ -98,6 +98,7 @@ console.log('Running tests:', testFiles);
 const result = spawnSync('node', [
   jestBin,
   '--config', configPath,
+  '--no-watchman',  // Watchman can't create its state dir inside a read-only test sandbox
   '--verbose',
   '--runTestsByPath',  // Only run the exact paths provided
   ...testFiles  // Pass test files directly
