@@ -13,6 +13,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OPEN_SOURCE_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 REGISTRY_DIR="$OPEN_SOURCE_DIR/registry"
+BAZEL_VERSION="$(tr -d '[:space:]' < "$OPEN_SOURCE_DIR/.bazelversion")"
 
 ERRORS=0
 fail() { echo "FAIL: $1"; ERRORS=$((ERRORS + 1)); }
@@ -167,9 +168,8 @@ for module_name in sorted(os.listdir(modules_dir)):
     print(f'single_version_override(module_name = \"{module_name}\", version = \"{version}\")')
 " "$REGISTRY_DIR")
 
-# Write .bazelversion. Pinned to the version this script validates against (USE_BAZEL_VERSION below),
-# not the bootstrap template: Bazel 8 rejects the empty res/** glob in @valdi//libs/dummy.
-echo "7.2.1" > "$CONSUMER_DIR/.bazelversion"
+# Write .bazelversion
+echo "$BAZEL_VERSION" > "$CONSUMER_DIR/.bazelversion"
 
 # Write MODULE.bazel — a minimal consumer that depends on Valdi.
 # Toolchains are inherited from Valdi via the valdi_toolchains extension.
@@ -197,6 +197,7 @@ common --enable_bzlmod
 common --noenable_workspace
 common --registry=$FILE_REGISTRY
 common --registry=https://bcr.bazel.build
+common --noincompatible_disallow_empty_glob
 RCEOF
 
 # Write empty BUILD so Bazel recognizes the workspace
@@ -227,7 +228,7 @@ MOD_GRAPH_STDERR=$(mktemp)
 # CARGO_BAZEL_REPIN=1 is set here (not in .bazelrc) so cargo-bazel repins during
 # module resolution without affecting the subsequent bazel build invocation where
 # the @@// patch path must resolve against the valdi source, not the consumer root.
-MOD_GRAPH=$(CARGO_BAZEL_REPIN=1 USE_BAZEL_VERSION=7.2.1 $BAZEL_CMD mod graph --output json --depth 99 --lockfile_mode=update 2>"$MOD_GRAPH_STDERR") || true
+MOD_GRAPH=$(CARGO_BAZEL_REPIN=1 USE_BAZEL_VERSION="$BAZEL_VERSION" $BAZEL_CMD mod graph --output json --depth 99 --lockfile_mode=update 2>"$MOD_GRAPH_STDERR") || true
 
 if [ -z "$MOD_GRAPH" ]; then
     echo "stderr from bazel mod graph:"
@@ -235,7 +236,8 @@ if [ -z "$MOD_GRAPH" ]; then
     fail "bazel mod graph failed in consumer project"
     rm -f "$MOD_GRAPH_STDERR"
 else
-    RESOLUTION_ERRORS=$(python3 -c "
+    # The graph goes in on stdin: as an argument it exceeds Linux's 128 KiB per-argument limit on Bazel 8.
+    RESOLUTION_ERRORS=$(printf '%s' "$MOD_GRAPH" | python3 -c "
 import json, sys, os
 
 def find_modules_tree(node, found):
@@ -250,7 +252,7 @@ def find_modules_tree(node, found):
         find_modules_tree(dep, found)
 
 registry_dir = sys.argv[1]
-graph = json.loads(sys.argv[2])
+graph = json.load(sys.stdin)
 errors = 0
 
 # Walk the dependency tree to find all resolved module versions
@@ -286,7 +288,7 @@ for module_name in sorted(os.listdir(modules_dir)):
         errors += 1
 
 sys.exit(errors)
-" "$REGISTRY_DIR" "$MOD_GRAPH") && RESOLUTION_EXIT=0 || RESOLUTION_EXIT=$?
+" "$REGISTRY_DIR") && RESOLUTION_EXIT=0 || RESOLUTION_EXIT=$?
     echo "$RESOLUTION_ERRORS"
     ERRORS=$((ERRORS + RESOLUTION_EXIT))
     rm -f "$MOD_GRAPH_STDERR"
@@ -297,7 +299,7 @@ echo
 echo "--- Build check (@valdi//libs/dummy:dummy) ---"
 echo
 
-if USE_BAZEL_VERSION=7.2.1 $BAZEL_CMD build @valdi//libs/dummy:dummy 2>&1; then
+if USE_BAZEL_VERSION="$BAZEL_VERSION" $BAZEL_CMD build @valdi//libs/dummy:dummy 2>&1; then
     pass "consumer build of @valdi//libs/dummy:dummy succeeded"
 else
     fail "consumer build of @valdi//libs/dummy:dummy failed"
