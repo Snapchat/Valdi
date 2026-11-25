@@ -4,9 +4,6 @@ Provide bridging types and conversion functions for observable types.
 
 # Example
 
-**Cheat sheet:**
-https://drive.google.com/file/d/1es4pbaHdJE8uGfMxi1sgSd8lfyjz5eUF/view?usp=sharing
-
 **Declaration:**
 ```ts
 export interface MyFeatureContext {

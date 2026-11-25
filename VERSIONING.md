@@ -64,6 +64,7 @@ Support tiers describe what we commit to, not just what CI happens to run.
 | Development host | macOS on Apple Silicon; Linux for Android builds and tests |
 | Xcode | 26.5 and 27 |
 | iOS deployment target | 15.0 and later |
+| macOS deployment target | 15.0 and later |
 | Android | API 21 (Android 5.0) and later |
 | Node.js | 20 LTS or later |
 | Bazel | 8.x, with bzlmod. The exact version is pinned in [`.bazelversion`](./.bazelversion). |

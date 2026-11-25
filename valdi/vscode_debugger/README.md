@@ -1,10 +1,6 @@
 <h1>
   <img alt="vscode-js-debug" src="resources/readme/logo-with-text.png" width="500">
   <br>
-  <a href="https://marketplace.visualstudio.com/items?itemName=ms-vscode.js-debug-nightly" alt="Click to visit marketplace">
-    <img src="https://vsmarketplacebadge.apphb.com/version-short/ms-vscode.js-debug-nightly.svg">
-    <img src="https://vsmarketplacebadge.apphb.com/rating-star/ms-vscode.js-debug-nightly.svg">
-  </a>
 </h1>
 
 The new, upcoming JavaScript debugger for VS Code. This extension debugs Node.js and web applications (in Edge and Chrome), and will eventually become the built-in debugger for VS Code.
@@ -103,7 +99,7 @@ You can turn off the suggestion prompt by selecting Never, or changing the setti
 
 ### Support for Microsoft Edge and WebView2
 
-We support launching the [new Microsoft Edge browser](https://www.microsoft.com/edge), via the `pwa-msedge` debug type. It supports all the same configuration settings as `chrome` does.
+We support launching the [new Microsoft Edge browser](https://learn.microsoft.com/en-us/microsoft-edge/), via the `pwa-msedge` debug type. It supports all the same configuration settings as `chrome` does.
 
 <img src="resources/readme/webview2.png" width="584">
 

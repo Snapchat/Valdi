@@ -113,7 +113,7 @@ import res from 'valdi_example/res';
 ```
 
 ## Animated images
-The `<animatedimage>` element supports several types of animated images and can display static images as well. Supported formats include [Lottie](https://airbnb.design/lottie) and animated/static WebP, as well as static JPG and PNG.
+The `<animatedimage>` element supports several types of animated images and can display static images as well. Supported formats include [Lottie](https://lottie.airbnb.tech/) and animated/static WebP, as well as static JPG and PNG.
 
 Under the hood, `<animatedimage>` uses the AnimatedImage [factory method](../../snap_drawing/src/snap_drawing/cpp/Utils/AnimatedImage.cpp) to find the right decoder to use for the given media. Valdi uses a custom Lottie renderer, and then relies on [SkCodec](https://github.com/google/skia/blob/main/include/codec/SkCodec.h) to handle a variety of image formats. This means that other formats supported by SkCodec (such as gif) could be supported by compiling SkCodec with additional codecs.
 

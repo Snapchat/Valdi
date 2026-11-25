@@ -85,7 +85,7 @@ import PackageDescription
 let package = Package(
     name: "HelloWorld",
     platforms: [
-        .iOS(.v12)
+        .iOS(.v15)
     ],
     products: [
         .library(name: "HelloWorld", targets: ["HelloWorldFramework"])
