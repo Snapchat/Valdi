@@ -11,7 +11,7 @@
 # teardown paths that matter here.
 #
 # Usage: sanitizer_tests.sh [asan|tsan]   (default: asan)
-# `tsan` runs only //valdi:test_integration under ThreadSanitizer, with the same Hermes exclusion as ASan.
+# `tsan` runs only //valdi:test_integration under ThreadSanitizer, excluding Hermes (as ASan does) and JSCore.
 # It is nightly-only and non-blocking in CI while its first findings are triaged.
 
 set -eux
@@ -26,7 +26,13 @@ case "$MODE" in
 esac
 
 EXTRA=(--test_output=errors)
+FILTER='-*/Hermes'
 if [ "$MODE" = tsan ]; then
+    # JSCore is excluded under TSan: it only exists on Linux through the prebuilt, uninstrumented
+    # libjsc.so (internal builds). TSan reports ~1,600 races per run with both sides inside libjsc, and
+    # JSC's SIGUSR1 thread suspend deadlocks GC under TSan's signal handling (~1 hang per 50 iterations
+    # of typedCallWithManyArgumentsKeepsArgumentsAliveAcrossGC/JSCore). Public CI never has JSCore on Linux.
+    FILTER='-*/Hermes:*/JSCore'
     # report_thread_leaks=0: ResourceManager's own dispatch queue threads are never joined at
     # teardown, so every test reports a "leak" (311 in the first run). It is runtime-owned and not
     # fixable from a test. halt_on_error=0 reports every race in one run instead of stopping at the
@@ -41,7 +47,7 @@ fi
 bzl test //valdi:test_integration \
     --config="$MODE" \
     "${EXTRA[@]}" \
-    --test_arg=--gtest_filter='-*/Hermes'
+    "--test_arg=--gtest_filter=$FILTER"
 
 if [ "$MODE" = tsan ]; then
     exit 0
