@@ -56,7 +56,7 @@ We're getting closer, but VSCode is still unhappy.
 
 ## Sections
 
-Sections in the `<SectionList>` are specified as [`SectionModel`s](https://github.com/Snapchat/Valdi_Widgets/blob/465111c7ae19a6da5bd610139f873e730052b042/valdi_modules/widgets/src/components/section/SectionModel.d.ts#L8).
+Sections in the `<SectionList>` are specified as [`SectionModel`s](https://github.com/Snapchat/Valdi_Widgets/blob/main/valdi_modules/widgets/src/components/section/SectionModel.d.ts#L8).
 
 ```typescript
 export interface SectionModel {
@@ -235,7 +235,7 @@ Take a look at how your officers are rendering. Then set `fullBleed={true}` on t
 
 ### SectionHeader
 
-[`SectionHeader`](https://github.com/Snapchat/Valdi_Widgets/blob/465111c7ae19a6da5bd610139f873e730052b042/valdi_modules/widgets/src/components/section/SectionHeader.tsx#L46) has a bunch of fancy rendering options.
+[`SectionHeader`](https://github.com/Snapchat/Valdi_Widgets/blob/main/valdi_modules/widgets/src/components/section/SectionHeader.tsx#L50) has a bunch of fancy rendering options.
 
 Let's swap out our `onRenderHeader` implementation with a `<SectionHeader>`.
 

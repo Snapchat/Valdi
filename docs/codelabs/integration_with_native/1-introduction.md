@@ -17,7 +17,7 @@ In this codelab, we're going to be modifying native interfaces which means that 
 
 TODO: workflow-overview is in Snapchat/Valdi
 
-You can find the [full documentation](../workflow-overview#iterating-locally) on the Valdi docs site but we'll walk you through it here. -->
+You can find the [full documentation](../../docs/start-about.md#prototype-quickly-with-hot-reload) on the Valdi docs site but we'll walk you through it here. -->
 
 **TODO**: Publicly available documentation. This described building the private apps from source.
 
