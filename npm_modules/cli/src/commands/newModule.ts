@@ -8,6 +8,7 @@ import type { ArgumentsResolver } from '../utils/ArgumentsResolver';
 import { BazelClient } from '../utils/BazelClient';
 import type { CliChoice } from '../utils/cliUtils';
 import { getUserChoice } from '../utils/cliUtils';
+import { requireFlagsWhenNonInteractive } from '../utils/nonInteractive';
 import { copyBootstrapFiles } from '../utils/copyBootstrapFiles';
 import { makeCommandHandler } from '../utils/errorUtils';
 import type { Replacements } from '../utils/fileUtils';
@@ -212,6 +213,12 @@ async function valdiNewModule(argv: ArgumentsResolver<CommandParameters>) {
   console.log(referenceString);
   const skipChecks = argv.getArgument('skipChecks');
 
+  requireFlagsWhenNonInteractive('valdi new_module', [
+    { flag: '--skip-checks', provided: Boolean(skipChecks) },
+    { flag: '--template <type>', provided: Boolean(argv.getArgument('template')) },
+    { flag: '<module-name>', provided: Boolean(argv.getArgument('moduleName')) },
+  ]);
+
   const checks: Checks = skipChecks ? {} : await promptChecks();
   const valdiModulePath = checks.valdiModulePath ?? path.join(await getBazelWorkspaceRoot(), 'modules');
 
@@ -275,8 +282,9 @@ export const builder = (yargs: Argv<CommandParameters>) => {
       choices: ALL_MODULE_TEMPLATES.map(template => template.path),
     })
     .option('skip-checks', {
-      describe: 'Skips confirmation prompts.',
+      describe: 'Skips confirmation prompts. With --template and a module name, runs without any prompt.',
       type: 'boolean',
+      alias: 'y',
     });
 };
 export const handler = makeCommandHandler(valdiNewModule);

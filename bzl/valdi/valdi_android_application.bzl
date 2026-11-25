@@ -122,7 +122,9 @@ def valdi_android_application(
         native_deps = [
             "@valdi//valdi",
         ] + native_deps,
-        so_name = "libvaldi.so",
+        # Per-application directory keeps the cc_binary target name unique when a package
+        # declares several valdi_application targets; the file is still named libvaldi.so.
+        so_name = "{}_native/libvaldi.so".format(name),
     )
 
     android_binary(

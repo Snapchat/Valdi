@@ -1,3 +1,4 @@
+import { CliError } from '../core/errors';
 import fs from 'fs';
 import path from 'path';
 import { ANSI_COLORS } from '../core/constants';
@@ -49,8 +50,18 @@ export class DevSetupHelper {
       console.log(`- ${command}`);
     }
 
-    const result = await spawnCliCommand(command, undefined, 'inherit', false, true);
-    return result.stdout;
+    try {
+      const result = await spawnCliCommand(command, undefined, 'inherit', false, true);
+      return result.stdout;
+    } catch (error) {
+      // stdio is inherited, so the underlying error message is empty: say what failed instead.
+      const detail = error instanceof Error && error.message ? `\n${error.message}` : '';
+      throw new CliError(
+        `${guide} failed while running:\n  ${commands.join('\n  ')}${detail}\n` +
+          'If a step asked for a sudo password, re-run this command from an interactive terminal ' +
+          '(sudo needs a TTY), or run the failed step manually and then re-run `valdi dev_setup`.',
+      );
+    }
   }
 
   async writeEnvVariablesToRcFile(envVariables: readonly EnvVariable[]): Promise<void> {

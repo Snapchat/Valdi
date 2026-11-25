@@ -22,6 +22,7 @@ import { wrapInColor } from '../utils/logUtils';
 import { toPascalCase, sanitizeProjectName, validateProjectName } from '../utils/stringUtils';
 import { getAllProjectSyncTargets, runProjectSync } from './projectsync';
 import { getLatestReleaseTag } from '../utils/githubUtils';
+import { requireFlagsWhenNonInteractive } from '../utils/nonInteractive';
 
 interface CommandParameters {
   confirmBootstrap: boolean;
@@ -280,6 +281,13 @@ async function valdiBootstrap(argv: ArgumentsResolver<CommandParameters>) {
 
   console.log(`\nCurrent directory: ${wrapInColor(curDir, ANSI_COLORS.GREEN_COLOR)}`);
 
+  // Must run before anything below can delete files (--with-cleanup): a missing flag must never cost the user their files.
+  requireFlagsWhenNonInteractive('valdi bootstrap', [
+    { flag: '-y', provided: Boolean(argv.getArgument('confirmBootstrap')) },
+    { flag: '-n <project-name>', provided: Boolean(argv.getArgument('projectName')) },
+    { flag: '-t <application-type>', provided: Boolean(argv.getArgument('applicationType')) },
+  ]);
+
   if (isAlreadyInitialized()) {
     // Check for existing project files
     // If the directory already contains a project, prompt the user to re-run command with explicit --with-cleanup flag
@@ -373,7 +381,8 @@ export const builder = (yargs: Argv<CommandParameters>) => {
       alias: 'y',
     })
     .option('applicationType', {
-      describe: 'Type of application to create',
+      describe: `Type of application to create (${ALL_APPLICATION_TEMPLATES.map(t => t.path).join(', ')})`,
+      choices: ALL_APPLICATION_TEMPLATES.map(t => t.path),
       alias: 't',
     })
     .option('projectName', {

@@ -1,7 +1,7 @@
 # Usage Instructions for This Module
 #
 # Step 1: Add this module to your `BUILD.bazel` file dependencies:
-#         `//src/valdi/{{MODULE_NAME}}`
+#         `//modules/{{MODULE_NAME}}` (adjust to wherever this module lives in your workspace)
 #
 # Step 2: Import the module in your `.tsx` file:
 #         `import { NewModuleComponent } from '{{MODULE_NAME}}/src/NewModuleComponent';`
