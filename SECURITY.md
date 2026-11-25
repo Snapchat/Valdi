@@ -23,7 +23,7 @@ A report we can act on quickly includes:
 
 ## Supported versions
 
-Security fixes are made on the `main` branch and included in the next release. Valdi is in beta, and fixes are not backported to older releases.
+Security fixes are made on the `main` branch and included in the next release. Fixes are not backported to older releases.
 
 ## Scope
 

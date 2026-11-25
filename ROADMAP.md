@@ -8,7 +8,7 @@ This roadmap is not a commitment. Priorities shift. If something here matters to
 
 ## Valdi 1.0
 
-Valdi is in beta. We're working toward a 1.0 release.
+Valdi 1.0 is here. The web target remains in beta.
 
 1.0 is a stability promise, not a feature release. It comes with:
 
@@ -20,7 +20,7 @@ Valdi is in beta. We're working toward a 1.0 release.
 1.0 does not include:
 
 - **Web feature parity.** Web ships as beta. See [Web / HTML target](#web--html-target).
-- **Full support for macOS or Linux.** macOS stays beta and Linux stays development only. See [VERSIONING.md](./VERSIONING.md#platform-support).
+- **Full support for Linux.** Linux stays development only. See [VERSIONING.md](./VERSIONING.md#platform-support).
 
 ## In progress
 

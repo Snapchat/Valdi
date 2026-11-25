@@ -7,13 +7,13 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Platforms](https://img.shields.io/badge/platform-iOS%20%7C%20Android%20%7C%20macOS-lightgrey)](./docs/INSTALL.md)
-[![Status](https://img.shields.io/badge/status-beta-yellow)]()
+[![Status](https://img.shields.io/badge/status-1.0-brightgreen)]()
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue?logo=typescript)](https://www.typescriptlang.org/)
 [![Documentation](https://img.shields.io/badge/docs-available-brightgreen)](./docs/README.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
 > [!NOTE]
-> **Beta Status:** Valdi has been widely used in Snap's production apps for the last 8 years. We're calling this a beta because our tools and documentation need more battle testing in the open source world. Valdi will exit beta when we're happy with the developer experience.
+> **Valdi 1.0:** Valdi has been widely used in Snap's production apps for the last 8 years, and 1.0 is the first stable release. The web target remains in beta. See [VERSIONING.md](./VERSIONING.md#platform-support).
 
 **Valdi is a cross-platform UI framework that delivers native performance without sacrificing developer velocity.** Write your UI once in declarative TypeScript, and it compiles directly to native views on iOS, Android, and macOS—no web views, no JavaScript bridges. 
 

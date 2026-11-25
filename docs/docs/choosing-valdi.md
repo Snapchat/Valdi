@@ -33,7 +33,7 @@ This page is a decision guide. It covers what Valdi is good at and honest gaps i
 
 **You need Windows or Intel Mac development machines.** The Valdi compiler binary currently ships only for Apple Silicon macOS. Intel Mac and Windows development are not supported yet. Linux is supported for Android-only work. If your engineers are on Windows or Intel Macs and need iOS support, choose React Native or Flutter.
 
-## Current gaps (as of beta-0.0.x)
+## Current gaps (as of 1.0)
 
 These are known limitations the Valdi team is actively working on or tracking:
 
