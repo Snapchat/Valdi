@@ -46,6 +46,9 @@ android_library(
     name = "dummy_android",
     custom_package = "com.snapchat.client",
     manifest = "src/manifest/AndroidManifest.xml",
-    resource_files = glob(["res/**"]),
+    resource_files = glob(
+        ["res/**"],
+        allow_empty = True,
+    ),
     visibility = ["//visibility:public"],
 )
