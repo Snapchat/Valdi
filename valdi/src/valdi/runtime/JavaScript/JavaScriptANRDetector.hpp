@@ -8,10 +8,12 @@
 
 #pragma once
 
+#include "valdi/runtime/JavaScript/JavaScriptANRSampler.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptTaskScheduler.hpp"
 #include "valdi_core/cpp/Utils/Mutex.hpp"
 #include "valdi_core/cpp/Utils/Shared.hpp"
 
+#include <memory>
 #include <vector>
 
 namespace Valdi {
@@ -71,12 +73,15 @@ public:
     void setMetrics(const Ref<Metrics>& metrics);
 
     void setNudgeEnabled(bool nudgeEnabled);
+    void setSamplingConfig(const JavaScriptANRSamplingConfig& samplingConfig);
 
     struct Entry : public SimpleRefCountable {
         JavaScriptTaskScheduler* taskScheduler = nullptr;
         std::atomic<bool> ack = 0;
         std::optional<std::chrono::steady_clock::time_point> synScheduledTime;
         bool didANR = false;
+        // Samples the scheduler's attribution while its syn waits past a tick. Reset with each new syn.
+        std::unique_ptr<JavaScriptANRSampler> sampler;
     };
 
 private:
@@ -89,7 +94,9 @@ private:
     Ref<IJavaScriptANRDetectorListener> _listener;
     std::chrono::steady_clock::duration _detectionThreshold;
     std::chrono::steady_clock::duration _tickInterval;
+    JavaScriptANRSamplingConfig _samplingConfig;
     task_id_t _nextTickTask = 0;
+    task_id_t _nextSampleTask = 0;
     bool _isInForeground = false;
     bool _started = false;
     bool _nudgeEnabled = false;
@@ -99,9 +106,15 @@ private:
     void scheduleNextTick();
     void rearmPendingSyns();
 
+    void startSampling(Entry& entry, std::chrono::steady_clock::time_point now);
+    void sampleWaitingEntries();
+    void scheduleNextSample();
+    void cancelNextSample();
+
     bool onANR(JavaScriptTaskScheduler& taskScheduler,
                std::chrono::steady_clock::duration detectionThreshold,
-               const std::atomic<bool>& ack);
+               const std::atomic<bool>& ack,
+               const JavaScriptANRSampler* sampler);
 };
 
 } // namespace Valdi

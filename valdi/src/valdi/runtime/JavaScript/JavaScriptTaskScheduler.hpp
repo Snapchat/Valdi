@@ -14,10 +14,13 @@
 #include "valdi_core/cpp/Utils/Shared.hpp"
 
 #include <atomic>
+#include <cstdint>
 #include <string>
 #include <vector>
 
 namespace Valdi {
+
+class JavaScriptANRAttribution;
 
 struct JavaScriptEntryParameters {
     IJavaScriptContext& jsContext;
@@ -178,11 +181,30 @@ public:
         return false;
     }
 
-    // Extra attribution for ANR messages (" [stuck-in: <native call>] [module: <module>]"), or empty
-    // if unavailable or ANR diagnostics are off. Reads saved native state without running JS, so it
-    // is safe to call while the JS thread is stuck.
+    // ANR messages can carry two views of the breadcrumb stack:
+    // - The deadline stack is the stack the JS thread is in when the detector reports the ANR, after its probe
+    //   has waited a full threshold. It is reported on the first line as [stuck-in:] (its innermost frame) and
+    //   [attribution:] (the whole stack).
+    // - The sample tree is where the thread spent the sampled part of that wait, busiest branch first (see
+    //   JavaScriptANRSampleTree), reported on the lines after the first. Its dominant stack is the first branch at
+    //   each level, followed while it holds at least half of the sampled time.
+
+    // The deadline stack for ANR messages (" [stuck-in: <frame>] [attribution: <stack>] [module: <module>]"), or
+    // empty if unavailable or ANR diagnostics are off. Reads saved native state without running JS, so it is safe
+    // to call while the JS thread is stuck.
     virtual std::string getANRAttributionInfo() const {
         return {};
+    }
+
+    // Changes whenever the ANR attribution chain does, so a sampler can tell an unchanged chain apart
+    // without copying it. Lock-free. 0 when not tracked.
+    virtual uint64_t getANRAttributionGeneration() const {
+        return 0;
+    }
+
+    // Copies the current ANR attribution chain into `attribution` and returns its generation.
+    virtual uint64_t copyANRAttribution(JavaScriptANRAttribution& /*attribution*/) const {
+        return 0;
     }
 
     /**

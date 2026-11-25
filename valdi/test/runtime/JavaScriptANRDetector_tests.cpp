@@ -1,16 +1,21 @@
 #include <gtest/gtest.h>
 
 #include "TestANRDetectorListener.hpp"
+#include "valdi/runtime/JavaScript/JavaScriptANRAttribution.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptANRDetector.hpp"
+#include "valdi/runtime/JavaScript/JavaScriptANRSampler.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptTaskScheduler.hpp"
 #include "valdi/runtime/Utils/AsyncGroup.hpp"
 #include "valdi_core/cpp/Utils/ConsoleLogger.hpp"
 #include "valdi_core/cpp/Utils/Exception.hpp"
+#include "valdi_core/cpp/Utils/Mutex.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <string>
 #include <thread>
 #include <utility>
+#include <vector>
 
 using namespace Valdi;
 
@@ -62,7 +67,36 @@ public:
     }
 
     std::string getANRAttributionInfo() const override {
-        return _anrAttributionInfo;
+        if (!_anrAttributionInfo.empty()) {
+            return _anrAttributionInfo;
+        }
+        // A test that drives the simulated chain reports it, like the runtime reports its live chain.
+        std::lock_guard<Mutex> lock(_chainMutex);
+        return _chain.format();
+    }
+
+    bool anrDiagnosticsEnabled() const override {
+        return _anrDiagnosticsEnabled;
+    }
+
+    uint64_t getANRAttributionGeneration() const override {
+        std::lock_guard<Mutex> lock(_chainMutex);
+        return _chainGeneration;
+    }
+
+    uint64_t copyANRAttribution(JavaScriptANRAttribution& attribution) const override {
+        std::lock_guard<Mutex> lock(_chainMutex);
+        attribution = _chain;
+        return _chainGeneration;
+    }
+
+    /** Simulates the JS thread moving into the scope named `label`. */
+    void setChain(const char* label) {
+        std::lock_guard<Mutex> lock(_chainMutex);
+        _chain = JavaScriptANRAttribution();
+        _chain.push(StringBox::fromCString(label));
+        ++_chainGeneration;
+        _anrDiagnosticsEnabled = true;
     }
 
     bool isReadyForANRDetection() const override {
@@ -100,8 +134,12 @@ private:
     std::atomic_bool _readyForANRDetection = true;
     std::atomic_bool _clearAttributionOnCapture = false;
     std::atomic_int _taskIdSequence = 0;
+    std::atomic_bool _anrDiagnosticsEnabled = false;
     std::string _anrAttributionInfo;
     StringBox _stackBundleName;
+    mutable Mutex _chainMutex;
+    JavaScriptANRAttribution _chain;
+    uint64_t _chainGeneration = 1;
 };
 
 struct ANRDetectorTestHelper {
@@ -135,6 +173,14 @@ struct ANRDetectorTestHelper {
 
     std::optional<JavaScriptANR> getLastANR() {
         return listener->getLastANR();
+    }
+
+    std::optional<JavaScriptANR> waitForANR() {
+        auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while (!getLastANR().has_value() && std::chrono::steady_clock::now() < deadline) {
+            waitForNextTick();
+        }
+        return getLastANR();
     }
 };
 
@@ -293,6 +339,57 @@ TEST(ANRDetector, attributesANRToBundleNamedByStackWhenContextHasNone) {
 
     ASSERT_EQ("Detected ANR in 'send_to' after 1.0 ms [stuck-in: friendmojiProvider.forUsers]", anr->getMessage());
     ASSERT_EQ(STRING_LITERAL("send_to"), anr->getModuleName());
+}
+
+TEST(ANRDetector, addsWhereTheTimeWentWhenSampling) {
+    ANRDetectorTestHelper helper;
+    JavaScriptANRSamplingConfig samplingConfig;
+    samplingConfig.enabled = true;
+    samplingConfig.interval = std::chrono::milliseconds(1);
+    samplingConfig.maxSamples = 10000;
+    helper.anrDetector->setSamplingConfig(samplingConfig);
+
+    helper.taskScheduler->setShouldSimulateANR();
+    // The backlog holds the thread for the whole window while the deadline reports a render, so neither line depends
+    // on when the test thread or the detector thread gets scheduled.
+    helper.taskScheduler->setChain("Backlog.item");
+    helper.taskScheduler->setANRAttributionInfo(" [stuck-in: UI.render]");
+
+    helper.anrDetector->onEnterForeground();
+    helper.anrDetector->start(std::chrono::milliseconds(200));
+
+    auto anr = helper.waitForANR();
+    ASSERT_TRUE(anr.has_value());
+    // The first line keeps naming what ran at the deadline; the tree below it leads with the backlog. Its times
+    // vary by run.
+    const auto& message = anr->getMessage();
+    auto lines = std::vector<std::string>();
+    for (size_t start = 0; start <= message.size();) {
+        auto end = std::min(message.find('\n', start), message.size());
+        lines.emplace_back(message.substr(start, end - start));
+        start = end + 1;
+    }
+    ASSERT_GE(lines.size(), 3u) << message;
+    EXPECT_EQ("Detected unattributed ANR after 200.0 ms [stuck-in: UI.render]", lines[0]);
+    EXPECT_EQ("Sampled ", lines[1].substr(0, 8)) << message;
+    EXPECT_NE(std::string::npos, lines[1].find(" ms of the 200 ms ANR window")) << message;
+    EXPECT_NE(std::string::npos, lines[2].find(" ms  Backlog.item")) << message;
+    EXPECT_EQ("", lines.back()) << message;
+}
+
+TEST(ANRDetector, keepsTheDeadlineAttributionWhenSamplingIsOff) {
+    ANRDetectorTestHelper helper;
+
+    helper.taskScheduler->setShouldSimulateANR();
+    helper.taskScheduler->setChain("Backlog.item");
+    helper.taskScheduler->setANRAttributionInfo(" [stuck-in: UI.render]");
+
+    helper.anrDetector->onEnterForeground();
+    helper.anrDetector->start(std::chrono::milliseconds(50));
+
+    auto anr = helper.waitForANR();
+    ASSERT_TRUE(anr.has_value());
+    ASSERT_EQ("Detected unattributed ANR after 50.0 ms [stuck-in: UI.render]", anr->getMessage());
 }
 
 } // namespace ValdiTest

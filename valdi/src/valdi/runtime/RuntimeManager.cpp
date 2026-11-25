@@ -724,6 +724,14 @@ void RuntimeManager::applyEffectiveTweakValueProvider() {
 
     _anrDetector->setNudgeEnabled(runtimeTweaks != nullptr ? runtimeTweaks->shouldNudgeJSThread() : false);
 
+    JavaScriptANRSamplingConfig anrSamplingConfig;
+    if (runtimeTweaks != nullptr) {
+        anrSamplingConfig.enabled = runtimeTweaks->enableANRSampling();
+        anrSamplingConfig.interval = std::chrono::milliseconds(runtimeTweaks->anrSamplingIntervalMs());
+        anrSamplingConfig.maxSamples = static_cast<size_t>(runtimeTweaks->anrSamplingMaxSamples());
+    }
+    _anrDetector->setSamplingConfig(anrSamplingConfig);
+
     YGConfigSetExperimentalFeatureEnabled(_yogaConfig.get(),
                                           YGExperimentalFeatureFixFlexBasisFitContent,
                                           runtimeTweaks != nullptr ? runtimeTweaks->enableFixFlexBasisFitContent() :

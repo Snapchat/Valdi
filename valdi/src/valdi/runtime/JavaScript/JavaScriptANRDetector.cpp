@@ -7,6 +7,7 @@
 //
 
 #include "valdi/runtime/JavaScript/JavaScriptANRDetector.hpp"
+#include "valdi/runtime/JavaScript/JavaScriptANRSampleTree.hpp"
 
 #include "valdi_core/cpp/Threading/DispatchQueue.hpp"
 
@@ -17,6 +18,7 @@
 #include "valdi_core/cpp/Utils/SmallVector.hpp"
 
 #include "utils/time/Duration.hpp"
+#include <algorithm>
 #include <fmt/format.h>
 
 namespace Valdi {
@@ -60,7 +62,12 @@ bool JavaScriptANR::hasRunningStacktrace() const {
 struct EntryToProcess {
     Ref<JavaScriptTaskScheduler> taskScheduler;
     Ref<JavaScriptANRDetector::Entry> entry;
+    std::unique_ptr<JavaScriptANRSampler> sampler;
 };
+
+static bool isSampling(const JavaScriptANRDetector::Entry& entry) {
+    return entry.sampler != nullptr && !entry.ack && !entry.didANR && !entry.sampler->isFull();
+}
 
 JavaScriptANRDetector::JavaScriptANRDetector(const Ref<ILogger>& logger)
     : _logger(logger),
@@ -86,12 +93,14 @@ void JavaScriptANRDetector::stop() {
     std::lock_guard<Mutex> lock(_mutex);
     _started = false;
     cancelNextTick();
+    cancelNextSample();
 }
 
 void JavaScriptANRDetector::onEnterBackground() {
     std::lock_guard<Mutex> lock(_mutex);
     _isInForeground = false;
     cancelNextTick();
+    cancelNextSample();
 }
 
 void JavaScriptANRDetector::onEnterForeground() {
@@ -114,6 +123,8 @@ void JavaScriptANRDetector::rearmPendingSyns() {
         if (entry->synScheduledTime && !entry->ack) {
             entry->synScheduledTime = timepoint;
         }
+        // Samples from before the pause describe a window that no longer counts.
+        entry->sampler = nullptr;
     }
 }
 
@@ -148,14 +159,63 @@ void JavaScriptANRDetector::scheduleNextTick() {
         _tickInterval);
 }
 
+// Must be called with _mutex held, for an entry whose syn is still waiting at a tick.
+void JavaScriptANRDetector::startSampling(Entry& entry, std::chrono::steady_clock::time_point now) {
+    if (!_samplingConfig.enabled || entry.sampler != nullptr || !entry.taskScheduler->anrDiagnosticsEnabled()) {
+        return;
+    }
+    entry.sampler = std::make_unique<JavaScriptANRSampler>(_samplingConfig.maxSamples, _samplingConfig.interval);
+    entry.sampler->sample(*entry.taskScheduler, now);
+}
+
+void JavaScriptANRDetector::sampleWaitingEntries() {
+    std::lock_guard<Mutex> lock(_mutex);
+    _nextSampleTask = 0;
+    auto now = std::chrono::steady_clock::now();
+    for (const auto& entry : _entries) {
+        if (isSampling(*entry)) {
+            entry->sampler->sample(*entry->taskScheduler, now);
+        }
+    }
+    scheduleNextSample();
+}
+
+// Must be called with _mutex held.
+void JavaScriptANRDetector::scheduleNextSample() {
+    if (_nextSampleTask != 0 || !_started || !_isInForeground ||
+        std::none_of(_entries.begin(), _entries.end(), [](const auto& entry) { return isSampling(*entry); })) {
+        return;
+    }
+    _nextSampleTask = _dispatchQueue->asyncAfter(
+        [self = Valdi::weakRef(this)]() {
+            auto strongSelf = self.lock();
+            if (strongSelf != nullptr) {
+                strongSelf->sampleWaitingEntries();
+            }
+        },
+        _samplingConfig.interval);
+}
+
+void JavaScriptANRDetector::cancelNextSample() {
+    if (_nextSampleTask != 0) {
+        _dispatchQueue->cancel(_nextSampleTask);
+        _nextSampleTask = 0;
+    }
+}
+
 bool JavaScriptANRDetector::onANR(JavaScriptTaskScheduler& taskScheduler,
                                   std::chrono::steady_clock::duration detectionThreshold,
-                                  const std::atomic<bool>& ack) {
+                                  const std::atomic<bool>& ack,
+                                  const JavaScriptANRSampler* sampler) {
     // Read the native-side attribution before waiting on the stack capture. The capture can take up
     // to kCaptureStacktraceTimeoutSeconds, and a native call that finishes during that wait clears
     // its name, which would report the stall as unattributed. The getter reads saved native state,
     // not JS, so it is safe to call while the JS thread is stuck.
     auto attributionInfo = taskScheduler.getANRAttributionInfo();
+    std::optional<JavaScriptANRSampleTree> sampleTree;
+    if (sampler != nullptr && sampler->hasEnoughSamples()) {
+        sampleTree = buildSampleTree(sampler->getSampledStacks());
+    }
     auto stacktraces = taskScheduler.captureStackTraces(std::chrono::seconds(kCaptureStacktraceTimeoutSeconds));
     StringBox moduleName;
     std::string message;
@@ -190,6 +250,12 @@ bool JavaScriptANRDetector::onANR(JavaScriptTaskScheduler& taskScheduler,
 
     if (stacktraces.empty()) {
         message += " but unable to capture stack traces.";
+    }
+    // On the lines after the first, which existing grouping and queries read unchanged. Ending the last line keeps
+    // what platforms append, like Android's module suffix, off the tree. SnapAir's stack trace view drops blank lines,
+    // so a second newline would not show there.
+    if (sampleTree.has_value()) {
+        message += formatSampleTree(sampleTree.value(), detectionThreshold) + "\n";
     }
 
     VALDI_ERROR(*_logger, "{}", message);
@@ -249,6 +315,7 @@ void JavaScriptANRDetector::checkForANRs() {
             if (!entry->synScheduledTime || entry->ack) {
                 entry->synScheduledTime = timepoint;
                 entry->ack = false;
+                entry->sampler = nullptr;
                 entry->taskScheduler->dispatchOnJsThreadAsync(JsThreadDispatchReason::ANRDetectorAcknowledgement,
                                                               [entry](const auto& /*jsEntry*/) { entry->ack = true; });
             } else if (!entry->taskScheduler->isReadyForANRDetection()) {
@@ -256,20 +323,27 @@ void JavaScriptANRDetector::checkForANRs() {
                 // devices. Slide the window on every tick while the scheduler is not ready so
                 // the in-flight syn gets a full detection budget once it becomes ready.
                 entry->synScheduledTime = timepoint;
+                entry->sampler = nullptr;
             } else if (entry->synScheduledTime.value() + detectionThreshold < timepoint) {
                 entry->didANR = true;
                 auto& entryToProcess = entriesWithANRToProcess.emplace_back();
                 entryToProcess.entry = entry;
                 entryToProcess.taskScheduler = Ref(entry->taskScheduler);
-            } else if (_nudgeEnabled) {
-                entry->taskScheduler->dispatchOnJsThreadAsync(JsThreadDispatchReason::ANRDetectorNudge,
-                                                              [](const auto& /*jsEntry*/) {});
+                entryToProcess.sampler = std::move(entry->sampler);
+            } else {
+                if (_nudgeEnabled) {
+                    entry->taskScheduler->dispatchOnJsThreadAsync(JsThreadDispatchReason::ANRDetectorNudge,
+                                                                  [](const auto& /*jsEntry*/) {});
+                }
+                startSampling(*entry, timepoint);
             }
         }
+        scheduleNextSample();
     }
 
     for (const auto& entryWithANR : entriesWithANRToProcess) {
-        bool recovered = onANR(*entryWithANR.taskScheduler, detectionThreshold, entryWithANR.entry->ack);
+        bool recovered =
+            onANR(*entryWithANR.taskScheduler, detectionThreshold, entryWithANR.entry->ack, entryWithANR.sampler.get());
 
         if (recovered) {
             std::lock_guard<Mutex> lock(_mutex);
@@ -320,6 +394,11 @@ void JavaScriptANRDetector::setMetrics(const Ref<Metrics>& metrics) {
 void JavaScriptANRDetector::setNudgeEnabled(bool nudgeEnabled) {
     std::lock_guard<Mutex> lock(_mutex);
     _nudgeEnabled = nudgeEnabled;
+}
+
+void JavaScriptANRDetector::setSamplingConfig(const JavaScriptANRSamplingConfig& samplingConfig) {
+    std::lock_guard<Mutex> lock(_mutex);
+    _samplingConfig = samplingConfig;
 }
 
 } // namespace Valdi

@@ -23,6 +23,12 @@ bool ValdiRuntimeTweaks::getConfigKey(const char* key) const {
     return _tweakValueProvider->getBool(configKey, false);
 }
 
+int32_t ValdiRuntimeTweaks::getPositiveIntConfigKey(const char* key, int32_t fallback) const {
+    auto configKey = StringCache::getGlobal().makeStringFromLiteral(std::string_view(key));
+    auto value = _tweakValueProvider->getInt(configKey, fallback);
+    return value > 0 ? value : fallback;
+}
+
 ValdiRuntimeTweaks::ValdiRuntimeTweaks(const Shared<ITweakValueProvider>& tweakValueProvider)
     : _tweakValueProvider(tweakValueProvider) {}
 ValdiRuntimeTweaks::~ValdiRuntimeTweaks() = default;
@@ -185,6 +191,22 @@ bool ValdiRuntimeTweaks::disableViewPoolingOnLayoutCallbacks() const {
 bool ValdiRuntimeTweaks::enableANRDiagnostics() const {
     // Key name kept from the earlier module-load diagnostics so the existing tweak config carries over.
     return getConfigKey("VALDI_ENABLE_MODULE_LOAD_DIAGNOSTICS");
+}
+
+bool ValdiRuntimeTweaks::enableANRFrameDurations() const {
+    return getConfigKey("VALDI_ENABLE_ANR_FRAME_DURATIONS");
+}
+
+bool ValdiRuntimeTweaks::enableANRSampling() const {
+    return getConfigKey("VALDI_ENABLE_ANR_SAMPLING");
+}
+
+int32_t ValdiRuntimeTweaks::anrSamplingIntervalMs() const {
+    return getPositiveIntConfigKey("VALDI_ANR_SAMPLING_INTERVAL_MS", 50);
+}
+
+int32_t ValdiRuntimeTweaks::anrSamplingMaxSamples() const {
+    return getPositiveIntConfigKey("VALDI_ANR_SAMPLING_MAX_SAMPLES", 128);
 }
 
 bool ValdiRuntimeTweaks::enableFixFlexBasisFitContent() const {

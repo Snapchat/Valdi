@@ -71,6 +71,8 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <regex>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -11946,6 +11948,319 @@ TEST_P(RuntimeFixture, canDetectANR) {
 
     ASSERT_TRUE(stacktrace.contains("at onCreate"));
     ASSERT_TRUE(stacktrace.contains("test/src/ANRDetection"));
+}
+
+// The deadline stack names whichever scope is innermost when the detector reports. When a short native call happens
+// to be open then, the report blames it for a stall it barely contributed to: a victim label. These tests pin a short
+// call to the deadline so the victim label reproduces deterministically, then check that the sample tree sampling
+// adds leads with the scope that held the thread.
+namespace {
+
+constexpr auto kVictimANRThreshold = std::chrono::milliseconds(600);
+constexpr auto kVictimANRTick = std::chrono::milliseconds(5);
+// The victim call starts this long before the deadline and blocks long enough to span it, so it is open when the
+// detector reads the breadcrumb but holds only a small part of the window.
+constexpr auto kVictimCallLead = std::chrono::milliseconds(120);
+constexpr auto kVictimCallDuration = std::chrono::milliseconds(300);
+constexpr const char* kVictimFunctionName = "stringsGetLocalizedString";
+// Busy JS between gate checks, so the scope's own work, not the bridged gate check, fills the window.
+constexpr const char* kSpinUntilGate = "const spinUntil = (gate) => {"
+                                       "  while (!runtime.isModuleLoaded(gate)) {"
+                                       "    let acc = 0;"
+                                       "    for (let i = 0; i < 20000; i++) { acc += i % 7; }"
+                                       "  }"
+                                       "};";
+
+struct ANRAttributionFrame {
+    std::string label;
+    int64_t openMs = -1;
+};
+
+struct ParsedANRAttribution {
+    std::string stuckIn;
+    std::vector<ANRAttributionFrame> frames;
+    // From the sample tree: the dominant stack's innermost label, its time, and the sampled time.
+    std::string dominant;
+    int64_t dominantMs = -1;
+    int64_t sampledMs = -1;
+
+    const ANRAttributionFrame* findFrame(const std::string& label) const {
+        for (const auto& frame : frames) {
+            if (frame.label == label) {
+                return &frame;
+            }
+        }
+        return nullptr;
+    }
+
+    bool dominantHeldMostOfTheWindow() const {
+        return dominantMs >= 0 && dominantMs * 2 >= sampledMs;
+    }
+};
+
+ParsedANRAttribution parseANRAttribution(const std::string& message) {
+    ParsedANRAttribution parsed;
+    std::smatch match;
+    if (std::regex_search(message, match, std::regex(R"(\[stuck-in: ([^\]]+)\])"))) {
+        parsed.stuckIn = match[1];
+    }
+    auto treeStart = message.find("\nSampled ");
+    if (treeStart != std::string::npos) {
+        // The dominant stack is the first branch at each level, followed while it holds half of the sampled time.
+        static const std::regex kHeader(R"(Sampled (\d+) ms of the \d+ ms ANR window)");
+        static const std::regex kBranch(R"(\s*(\d+) ms  ( *)(\S.*))");
+        std::istringstream lines(message.substr(treeStart + 1));
+        std::string line;
+        std::smatch lineMatch;
+        if (std::getline(lines, line) && std::regex_match(line, lineMatch, kHeader)) {
+            parsed.sampledMs = std::stoll(lineMatch[1]);
+        }
+        size_t depth = 0;
+        while (std::getline(lines, line) && std::regex_match(line, lineMatch, kBranch)) {
+            auto ms = std::stoll(lineMatch[1]);
+            if (static_cast<size_t>(lineMatch[2].length()) / 2 != depth || ms * 2 < parsed.sampledMs) {
+                break;
+            }
+            std::string labels = lineMatch[3];
+            auto lastSeparator = labels.rfind(" -> ");
+            parsed.dominant = lastSeparator == std::string::npos ? labels : labels.substr(lastSeparator + 4);
+            parsed.dominantMs = ms;
+            ++depth;
+        }
+    }
+    if (std::regex_search(message, match, std::regex(R"(\[attribution: ([^\]]+)\])"))) {
+        std::string chain = match[1];
+        static const std::regex kFrameWithDuration(R"((.*) \((\d+) ms\))");
+        size_t start = 0;
+        for (;;) {
+            auto end = chain.find(" -> ", start);
+            auto text = chain.substr(start, end == std::string::npos ? std::string::npos : end - start);
+            ANRAttributionFrame frame;
+            std::smatch frameMatch;
+            if (std::regex_match(text, frameMatch, kFrameWithDuration)) {
+                frame.label = frameMatch[1];
+                frame.openMs = std::stoll(frameMatch[2]);
+            } else {
+                frame.label = text;
+            }
+            parsed.frames.emplace_back(std::move(frame));
+            if (end == std::string::npos) {
+                break;
+            }
+            start = end + 4;
+        }
+    }
+    return parsed;
+}
+
+bool endsWith(const std::string& text, const std::string& suffix) {
+    return text.size() >= suffix.size() && text.compare(text.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
+Shared<TestTweakValueProvider> makeANRAttributionTweaks(bool samplingEnabled) {
+    auto tweaks = makeShared<TestTweakValueProvider>().toShared();
+    tweaks->config.setMapValue("VALDI_ENABLE_MODULE_LOAD_DIAGNOSTICS", Valdi::Value(true));
+    tweaks->config.setMapValue("VALDI_ENABLE_ANR_FRAME_DURATIONS", Valdi::Value(true));
+    tweaks->config.setMapValue("VALDI_ENABLE_ANR_SAMPLING", Valdi::Value(samplingEnabled));
+    tweaks->config.setMapValue("VALDI_ANR_SAMPLING_INTERVAL_MS", Valdi::Value(static_cast<int32_t>(5)));
+    tweaks->config.setMapValue("VALDI_ANR_SAMPLING_MAX_SAMPLES", Valdi::Value(static_cast<int32_t>(1000)));
+    return tweaks;
+}
+
+// Exposes a native function that blocks for kVictimCallDuration, standing in for a bridged call like
+// Strings.getLocalizedString that is fast on its own but happens to be open when the detector reads the breadcrumb.
+void installVictimFunction(JavaScriptRuntime& jsRuntime) {
+    auto victim = makeShared<ValueFunctionWithCallable>([](const auto& /*callContext*/) -> Value {
+        std::this_thread::sleep_for(kVictimCallDuration);
+        return Value();
+    });
+    jsRuntime.setValueToGlobalObject(StringBox::fromCString(kVictimFunctionName), Value(victim));
+}
+
+Ref<TestANRDetectorListener> listenForANRs(RuntimeWrapper& wrapper) {
+    auto listener = makeShared<TestANRDetectorListener>();
+    auto anrDetector = wrapper.runtimeManager->getANRDetector();
+    anrDetector->setListener(listener);
+    anrDetector->setTickInterval(kVictimANRTick);
+    return listener;
+}
+
+std::optional<JavaScriptANR> waitForANR(TestANRDetectorListener& listener) {
+    try {
+        return listener.waitForANR();
+    } catch (...) {
+        return std::nullopt;
+    }
+}
+
+// Runs a long scope that enters the victim call just before the detector's deadline, and returns the ANR it reports.
+std::optional<JavaScriptANR> runLongScopeWithVictimAtDeadline(RuntimeWrapper& wrapper) {
+    auto* jsRuntime = wrapper.runtime->getJavaScriptRuntime();
+    installVictimFunction(*jsRuntime);
+    auto listener = listenForANRs(wrapper);
+
+    std::string script = std::string(kSpinUntilGate) +
+                         "runtime.trace('ANRVictim.render', () => {"
+                         "  spinUntil('anr_victim_gate_enter');"
+                         "  " +
+                         kVictimFunctionName +
+                         "();"
+                         "  spinUntil('anr_victim_gate_exit');"
+                         "});"
+                         "return 0;";
+    Result<Value> evalResult;
+    std::thread evalThread([&] {
+        evalResult =
+            jsRuntime->evaluateScript(makeShared<ByteBuffer>(script)->toBytesView(), STRING_LITERAL("anr_victim.js"));
+    });
+
+    auto inScopeDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+    while (jsRuntime->getANRAttributionInfo().find("ANRVictim.render") == std::string::npos &&
+           std::chrono::steady_clock::now() < inScopeDeadline) {
+        std::this_thread::yield();
+    }
+
+    // The first tick posts the probe, so the detector reads the breadcrumb one threshold after it.
+    auto detectorStart = std::chrono::steady_clock::now();
+    wrapper.runtimeManager->getANRDetector()->start(kVictimANRThreshold);
+    std::this_thread::sleep_until(detectorStart + kVictimANRTick + kVictimANRThreshold - kVictimCallLead);
+    wrapper.loadModule(STRING_LITERAL("anr_victim_gate_enter"), ResourceManagerLoadModuleType::Sources);
+
+    auto anr = waitForANR(*listener);
+    wrapper.loadModule(STRING_LITERAL("anr_victim_gate_exit"), ResourceManagerLoadModuleType::Sources);
+    evalThread.join();
+    EXPECT_TRUE(evalResult) << evalResult.description();
+    return anr;
+}
+
+} // namespace
+
+TEST_P(RuntimeFixture, appliesANRFrameDurationsFromTweaksAttachedAfterInit) {
+    wrapper.teardown();
+    auto initTweaks = makeShared<TestTweakValueProvider>().toShared();
+    initTweaks->config.setMapValue("VALDI_ENABLE_MODULE_LOAD_DIAGNOSTICS", Valdi::Value(true));
+    wrapper = RuntimeWrapper(getJsBridge(), getTSNMode(), false, initTweaks);
+    if (!isRuntimeTraceBound(*wrapper.runtime->getJavaScriptRuntime())) {
+        GTEST_SKIP() << "tracing disabled in this build (runtime.trace not bound)";
+    }
+
+    // Durations are off at init and turned on by a provider attached afterwards.
+    wrapper.runtime->setRuntimeTweaks(makeShared<ValdiRuntimeTweaks>(makeANRAttributionTweaks(false)));
+
+    std::string spinBody = "runtime.trace('renderComponent.DurationProbe', () => {"
+                           "  while (!runtime.isModuleLoaded('anr_duration_gate')) {}"
+                           "});"
+                           "return 0;";
+    const std::string expected = "renderComponent.DurationProbe (";
+    auto observed = observeANRAttributionWhileSpinning(wrapper, spinBody, "anr_duration_gate", expected);
+
+    EXPECT_NE(std::string::npos, observed.find(expected)) << "observed: '" << observed << "'";
+}
+
+TEST_P(RuntimeFixture, reportsAShortCallOpenAtTheANRDeadlineAsStuckInWithoutSampling) {
+    wrapper.teardown();
+    wrapper = RuntimeWrapper(getJsBridge(), getTSNMode(), false, makeANRAttributionTweaks(false));
+    if (!isRuntimeTraceBound(*wrapper.runtime->getJavaScriptRuntime())) {
+        GTEST_SKIP() << "tracing disabled in this build (runtime.trace not bound)";
+    }
+
+    auto anr = runLongScopeWithVictimAtDeadline(wrapper);
+    ASSERT_TRUE(anr.has_value()) << "no ANR reported";
+    auto parsed = parseANRAttribution(anr->getMessage());
+    ASSERT_FALSE(parsed.frames.empty()) << anr->getMessage();
+    if (!endsWith(parsed.frames.back().label, kVictimFunctionName)) {
+        GTEST_SKIP() << "The deadline missed the victim call on this run (starved runner): " << anr->getMessage();
+    }
+
+    // The report blames the call that happened to be open at the deadline...
+    EXPECT_EQ(parsed.frames.back().label, parsed.stuckIn) << anr->getMessage();
+    // ...although its duration shows it ran for a small part of the window, while its scope ran for all of it.
+    const auto* scope = parsed.findFrame("ANRVictim.render");
+    ASSERT_NE(nullptr, scope) << anr->getMessage();
+    EXPECT_GE(scope->openMs, kVictimANRThreshold.count()) << anr->getMessage();
+    EXPECT_LT(parsed.frames.back().openMs, kVictimANRThreshold.count() / 2) << anr->getMessage();
+    EXPECT_TRUE(parsed.dominant.empty()) << anr->getMessage();
+}
+
+TEST_P(RuntimeFixture, samplingAddsTheScopeThatHeldTheThreadWhenAShortCallIsOpenAtTheDeadline) {
+    wrapper.teardown();
+    wrapper = RuntimeWrapper(getJsBridge(), getTSNMode(), false, makeANRAttributionTweaks(true));
+    if (!isRuntimeTraceBound(*wrapper.runtime->getJavaScriptRuntime())) {
+        GTEST_SKIP() << "tracing disabled in this build (runtime.trace not bound)";
+    }
+
+    auto anr = runLongScopeWithVictimAtDeadline(wrapper);
+    ASSERT_TRUE(anr.has_value()) << "no ANR reported";
+    auto parsed = parseANRAttribution(anr->getMessage());
+    ASSERT_FALSE(parsed.frames.empty()) << anr->getMessage();
+    if (!endsWith(parsed.frames.back().label, kVictimFunctionName)) {
+        GTEST_SKIP() << "The deadline missed the victim call on this run (starved runner): " << anr->getMessage();
+    }
+
+    // Stuck-in still names the call open at the deadline, so grouping is unchanged; the sample tree leads with the
+    // scope that held the thread.
+    EXPECT_EQ(parsed.frames.back().label, parsed.stuckIn) << anr->getMessage();
+    EXPECT_EQ("ANRVictim.render", parsed.dominant) << anr->getMessage();
+    EXPECT_TRUE(parsed.dominantHeldMostOfTheWindow()) << anr->getMessage();
+}
+
+TEST_P(RuntimeFixture, samplingAddsTheBacklogThatHeldTheThreadWhenAnotherTaskRunsAtTheDeadline) {
+    wrapper.teardown();
+    wrapper = RuntimeWrapper(getJsBridge(), getTSNMode(), false, makeANRAttributionTweaks(true));
+    auto* jsRuntime = wrapper.runtime->getJavaScriptRuntime();
+    if (!isRuntimeTraceBound(*jsRuntime)) {
+        GTEST_SKIP() << "tracing disabled in this build (runtime.trace not bound)";
+    }
+    installVictimFunction(*jsRuntime);
+    auto listener = listenForANRs(wrapper);
+
+    // Short tasks hold the thread until the test opens a gate just before the deadline (detector start +
+    // kVictimANRTick + kVictimANRThreshold), then a render enters the victim call, which spans the deadline. The gate
+    // ends the backlog on time however fast this engine and runner work through it.
+    std::string script = std::string(kSpinUntilGate) +
+                         "for (let i = 0; i < 40; i++) {"
+                         "  runtime.scheduleWorkItem(() => runtime.trace('ANRVictim.backlogItem', () => {"
+                         "    const end = Date.now() + 20;"
+                         "    while (Date.now() < end && !runtime.isModuleLoaded('anr_backlog_gate')) {"
+                         "      let acc = 0;"
+                         "      for (let i = 0; i < 20000; i++) { acc += i % 7; }"
+                         "    }"
+                         "  }), 0);"
+                         "}"
+                         "runtime.scheduleWorkItem(() => runtime.trace('ANRVictim.render', () => {"
+                         "  " +
+                         kVictimFunctionName +
+                         "();"
+                         "  spinUntil('anr_victim_gate_exit');"
+                         "}), 0);"
+                         "return 0;";
+    auto evalResult =
+        jsRuntime->evaluateScript(makeShared<ByteBuffer>(script)->toBytesView(), STRING_LITERAL("anr_backlog.js"));
+    ASSERT_TRUE(evalResult) << evalResult.description();
+    auto detectorStart = std::chrono::steady_clock::now();
+    wrapper.runtimeManager->getANRDetector()->start(kVictimANRThreshold);
+    std::this_thread::sleep_until(detectorStart + kVictimANRTick + kVictimANRThreshold - kVictimCallLead);
+    wrapper.loadModule(STRING_LITERAL("anr_backlog_gate"), ResourceManagerLoadModuleType::Sources);
+
+    auto anr = waitForANR(*listener);
+    wrapper.loadModule(STRING_LITERAL("anr_victim_gate_exit"), ResourceManagerLoadModuleType::Sources);
+    jsRuntime->dispatchSynchronouslyOnJsThread(STRING_LITERAL("test.runtime"), [](auto&) {});
+
+    ASSERT_TRUE(anr.has_value()) << "no ANR reported";
+    auto parsed = parseANRAttribution(anr->getMessage());
+    ASSERT_FALSE(parsed.frames.empty()) << anr->getMessage();
+    if (!endsWith(parsed.frames.back().label, kVictimFunctionName)) {
+        GTEST_SKIP() << "The deadline missed the victim call on this run (starved runner): " << anr->getMessage();
+    }
+
+    // The render running at the deadline started well inside the window: it is a victim of the backlog...
+    const auto* render = parsed.findFrame("ANRVictim.render");
+    ASSERT_NE(nullptr, render) << anr->getMessage();
+    EXPECT_LT(render->openMs, kVictimANRThreshold.count() / 2) << anr->getMessage();
+    // ...and the sample tree leads with the backlog that held the thread for most of it.
+    EXPECT_EQ(parsed.frames.back().label, parsed.stuckIn) << anr->getMessage();
+    EXPECT_EQ("ANRVictim.backlogItem", parsed.dominant) << anr->getMessage();
+    EXPECT_TRUE(parsed.dominantHeldMostOfTheWindow()) << anr->getMessage();
 }
 
 // The ANR detector holds runtimes by raw pointer and keeps ticking after one of them is destroyed, so

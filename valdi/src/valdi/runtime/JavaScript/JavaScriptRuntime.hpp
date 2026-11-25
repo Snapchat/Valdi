@@ -219,6 +219,9 @@ public:
     void setListener(IJavaScriptRuntimeListener* listener, const Weak<SharedPtrRefCountable>& listenerOwner);
     RetainedListener getListener() const;
     void setANRDiagnosticsEnabled(bool enabled);
+    // Records when each ANR attribution frame starts, so reports can say how long each scope has run.
+    // Costs one clock read per frame push on the JS thread.
+    void setANRFrameDurationsEnabled(bool enabled);
 
     // Kept in sync with the VALDI_ENABLE_RESOLUTION_TEARDOWN_DEGRADE tweak by Runtime::setRuntimeTweaks
     // so pushModuleToMarshaller can read the kill switch after teardown (when the listener is gone).
@@ -388,6 +391,8 @@ public:
     bool isInJsThread() final;
     Ref<Context> getLastDispatchedContext() const final;
     std::string getANRAttributionInfo() const final;
+    uint64_t getANRAttributionGeneration() const final;
+    uint64_t copyANRAttribution(JavaScriptANRAttribution& attribution) const final;
 
     /** Explicit owner captured by callbacks exported on the JS thread. */
     const StringBox& getCallbackAttribution();
@@ -554,8 +559,12 @@ private:
     // the attribution stack: written on the JS thread around JS->native bridge calls,
     // read by the ANR detector without running JS.
     std::atomic<bool> _anrDiagnosticsEnabled = false;
+    std::atomic<bool> _anrFrameDurationsEnabled = false;
     mutable Mutex _nativeCallActivityMutex;
     JavaScriptANRAttribution _anrAttribution;
+    // Bumped under _nativeCallActivityMutex on every change to _anrAttribution and read lock-free by the
+    // ANR sampler, which skips copying a chain that has not changed. Starts at 1: 0 means "not tracked".
+    std::atomic<uint64_t> _anrAttributionGeneration = 1;
     StringBox _callbackAttribution;
     // A lock that will block the JS thread until postInit() is called and the initialization has completed
     AsyncGroup _initLock;
@@ -808,9 +817,14 @@ private:
     friend class ScopedCallbackAttribution;
     JavaScriptANRAttribution::RestoreToken pushNativeCallActivity(const StringBox& name);
     void popNativeCallActivity(JavaScriptANRAttribution::RestoreToken token);
-    JavaScriptANRAttribution swapANRAttribution(JavaScriptANRAttribution attribution);
+    // Installs a dispatched task's attribution as the current chain and returns the chain it replaced.
+    JavaScriptANRAttribution enterANRAttribution(JavaScriptANRAttribution attribution);
+    void restoreANRAttribution(JavaScriptANRAttribution previous);
     Shared<const JavaScriptANRAttribution> captureANRAttribution(const Context& ownerContext,
                                                                  const StringBox& dispatchAttribution);
+    // Now when frame durations are enabled, otherwise an unset time point that skips the clock read.
+    JavaScriptANRAttribution::TimePoint anrFrameStartTime() const;
+    std::string formatANRAttributionInfo() const;
 
     void dispatchOnJsThreadImpl(Ref<Context> ownerContext,
                                 JavaScriptTaskScheduleType scheduleType,

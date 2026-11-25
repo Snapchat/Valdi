@@ -78,6 +78,70 @@ TEST(JavaScriptANRAttribution, emptyLabelsDoNotEraseParents) {
     EXPECT_EQ(" [stuck-in: Product.load]", attribution.format());
 }
 
+TEST(JavaScriptANRAttribution, reportsHowLongEachFrameHasBeenOpen) {
+    JavaScriptANRAttribution::TimePoint start(std::chrono::seconds(100));
+    JavaScriptANRAttribution attribution;
+    attribution.push(StringBox::fromCString("createRoot(Profile)"), start);
+    attribution.push(StringBox::fromCString("runtime.loadJsModule(profile/src/Actions)"),
+                     start + std::chrono::milliseconds(4826));
+    attribution.push(StringBox::fromCString("Strings.getLocalizedString"), start + std::chrono::milliseconds(4867));
+
+    EXPECT_EQ(" [stuck-in: Strings.getLocalizedString] [attribution: createRoot(Profile) (4870 ms) -> "
+              "runtime.loadJsModule(profile/src/Actions) (44 ms) -> Strings.getLocalizedString (3 ms)]",
+              attribution.format(start + std::chrono::milliseconds(4870)));
+}
+
+TEST(JavaScriptANRAttribution, reportsTheDurationOfALoneFrame) {
+    JavaScriptANRAttribution::TimePoint start(std::chrono::seconds(100));
+    JavaScriptANRAttribution attribution;
+    attribution.push(StringBox::fromCString("renderComponent(SearchBody)"), start);
+
+    EXPECT_EQ(" [stuck-in: renderComponent(SearchBody)] [attribution: renderComponent(SearchBody) (180 ms)]",
+              attribution.format(start + std::chrono::milliseconds(180)));
+    EXPECT_EQ(" [stuck-in: renderComponent(SearchBody)]", attribution.format());
+}
+
+TEST(JavaScriptANRAttribution, omitsDurationsForFramesWithoutStartTimes) {
+    JavaScriptANRAttribution attribution;
+    attribution.push(StringBox::fromCString("A"));
+    attribution.push(StringBox::fromCString("B"));
+
+    EXPECT_EQ(" [stuck-in: B] [attribution: A -> B]",
+              attribution.format(JavaScriptANRAttribution::TimePoint(std::chrono::seconds(100))));
+}
+
+TEST(JavaScriptANRAttribution, restampsInheritedFrames) {
+    JavaScriptANRAttribution::TimePoint dispatchTime(std::chrono::seconds(100));
+    JavaScriptANRAttribution attribution;
+    attribution.push(StringBox::fromCString("A"), dispatchTime);
+    attribution.push(StringBox::fromCString("B"), dispatchTime);
+
+    auto taskStart = dispatchTime + std::chrono::seconds(4);
+    attribution.setStartTime(taskStart);
+
+    EXPECT_EQ(" [stuck-in: B] [attribution: A (20 ms) -> B (20 ms)]",
+              attribution.format(taskStart + std::chrono::milliseconds(20)));
+}
+
+TEST(JavaScriptANRAttribution, keepsStartTimesThroughOverflow) {
+    JavaScriptANRAttribution::TimePoint start(std::chrono::seconds(100));
+    JavaScriptANRAttribution attribution;
+    std::vector<JavaScriptANRAttribution::RestoreToken> tokens;
+    for (int i = 0; i < 20; ++i) {
+        tokens.emplace_back(
+            attribution.push(StringBox::fromString("frame" + std::to_string(i)), start + std::chrono::milliseconds(i)));
+    }
+    // Popping the overflowing frames brings back the displaced ones with their own start times.
+    for (int i = 19; i >= 16; --i) {
+        attribution.pop(std::move(tokens[i]));
+    }
+
+    auto report = attribution.format(start + std::chrono::milliseconds(100));
+    EXPECT_NE(std::string::npos, report.find("[stuck-in: frame15]"));
+    EXPECT_NE(std::string::npos, report.find("[attribution: frame0 (100 ms) -> frame1 (99 ms) -> frame2 (98 ms)"));
+    EXPECT_EQ(std::string::npos, report.find("omitted"));
+}
+
 TEST(JavaScriptANRAttribution, boundsReportSizeWithLongFramesAndOverflow) {
     JavaScriptANRAttribution attribution;
     for (size_t i = 0; i < 1000; ++i) {
