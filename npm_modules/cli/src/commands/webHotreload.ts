@@ -34,7 +34,7 @@ async function valdiWebHotreload(argv: ArgumentsResolver<CommandParameters>) {
 
 export const command = 'web-hotreload --target <bazel-target>';
 export const describe =
-  'Start a Valdi web playground with hot module reload (webpack-dev-server). '
+  '(experimental) Start a Valdi web playground with hot module reload (webpack-dev-server). '
   + 'Pass the Bazel label of the playground :dev target created by '
   + 'valdi_web_playground(hmr_config = ...).';
 export const builder = (yargs: Argv<CommandParameters>) => {

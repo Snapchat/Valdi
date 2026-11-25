@@ -1,3 +1,6 @@
+/**
+ * Sample entry for developing Valdi web support. The web target is experimental (beta).
+ */
 //import { Arena } from 'valdi_protobuf/src/Arena';
 import { HTTPClient } from 'valdi_http/src/HTTPClient';
 export default function bareMinimum(): void {

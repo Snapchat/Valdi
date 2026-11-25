@@ -1,3 +1,6 @@
+/**
+ * Web implementation of the WebView controller. The web target is experimental (beta).
+ */
 import type {
   IWebViewController,
   IWebViewControllerState,

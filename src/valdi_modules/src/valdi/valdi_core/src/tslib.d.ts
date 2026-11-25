@@ -45,7 +45,7 @@ export declare function __rest(t: any, propertyNames: (string | symbol)[]): any;
  * @param target The target object.
  * @param key If specified, the own property to apply the decorators to.
  * @param desc The property descriptor, defaults to fetching the descriptor from the target object.
- * @experimental
+ * @internal
  */
 export declare function __decorate(decorators: Function[], target: any, key?: string | symbol, desc?: any): any;
 
@@ -54,7 +54,7 @@ export declare function __decorate(decorators: Function[], target: any, key?: st
  *
  * @param paramIndex The parameter index to apply the decorator to.
  * @param decorator The parameter decorator to apply. Note that the return value is ignored.
- * @experimental
+ * @internal
  */
 export declare function __param(paramIndex: number, decorator: Function): Function;
 
@@ -95,7 +95,7 @@ export declare function __setFunctionName(f: Function, name: string | symbol, pr
  *
  * @param metadataKey The metadata key
  * @param metadataValue The metadata value
- * @experimental
+ * @internal
  */
 export declare function __metadata(metadataKey: any, metadataValue: any): Function;
 

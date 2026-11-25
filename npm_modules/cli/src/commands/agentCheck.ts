@@ -193,7 +193,7 @@ function outputResults(results: StepResult[], totalStart: number, json: boolean)
 
 export const command = 'agent-check [--module module_name] [--target target_name] [--quick]';
 export const describe =
-  'Validate a Valdi module: resolve targets, build, lint, and test in one command. '
+  '(experimental) Validate a Valdi module: resolve targets, build, lint, and test in one command. '
   + 'Use --quick to skip the build step when the hot reloader is already compiling your changes. '
   + 'Use --json for structured output that AI agents can parse directly.';
 export const builder = (yargs: Argv<CommandParameters>) => {

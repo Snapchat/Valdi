@@ -776,6 +776,8 @@ interface ViewAttributes {
   boxShadow?: string;
 
   /**
+   * @experimental This feature is experimental and may change in future releases.
+   *
    * [Web-Only]
    * Sets the mouse cursor to be displayed when hovering over the element.
    * This property is only effective on web platforms.
@@ -2184,9 +2186,9 @@ export interface ScrollViewInteractive extends ScrollView {
    * @experimental This feature is experimental and may change in future releases.
    *
    * Pixels of visual overhang above sticky headers under this scroll. Extends the
-   * effective header height for the sticky clamp so consumers that render a bar
-   * above the header (e.g. SectionList with stickyCover) do not overlap the next
-   * section's header. Only applies when nativeStickyEnabled=true.
+   * effective header height for the sticky clamp so a bar rendered above the header
+   * does not overlap the next section's header. Only applies when
+   * nativeStickyEnabled=true.
    * @default: 0
    */
   nativeStickyCover?: number;
@@ -2195,10 +2197,10 @@ export interface ScrollViewInteractive extends ScrollView {
    * @experimental This feature is experimental and may change in future releases.
    *
    * Pixels below the scroll viewport top where sticky headers should pin. Matches
-   * CSS `position: sticky; top: N`. Use when a floating page header (e.g. Subscreen's
-   * SubscreenHeader) has a visual footprint (gradient, shadow, animated height)
-   * extending below its Yoga bounds; without this the sticky headers pin at Yoga-top
-   * of the scroll viewport and can end up clipped behind the floating header.
+   * CSS `position: sticky; top: N`. Use when a floating page header has a visual
+   * footprint (gradient, shadow, animated height) extending below its Yoga bounds;
+   * without this the sticky headers pin at Yoga-top of the scroll viewport and can
+   * end up clipped behind the floating header.
    * Only applies when nativeStickyEnabled=true.
    * @default: 0
    */

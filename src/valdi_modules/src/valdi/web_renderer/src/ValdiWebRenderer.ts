@@ -1,3 +1,6 @@
+/**
+ * Entry point of the Valdi web renderer. The web target is experimental (beta) and its APIs may change.
+ */
 import type { ComponentPrototype } from 'valdi_core/src/ComponentPrototype';
 import type { ComponentConstructor, IComponent } from 'valdi_core/src/IComponent';
 import type { RequireFunc } from 'valdi_core/src/IModuleLoader';

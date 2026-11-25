@@ -1,5 +1,8 @@
 # Web development
 
+> [!WARNING]
+> **Experimental.** The web target is in beta and its APIs may change in any release.
+
 Valdi Web applications use the same compiler and component model as native Valdi applications. A Web target packages the compiled modules, generated registries, resources, and browser runtime into a ZIP that the CLI serves locally.
 
 ## Build and run

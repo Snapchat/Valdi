@@ -49,13 +49,14 @@ Commands:
   valdi log                                                    Streams Valdi logs from the connected device to console
   valdi inspect <command>                                      Inspect a running Valdi app — component trees, contexts,
                                                                screenshots, heap
-  valdi agent-check [--module module_name] [--target           Validate a Valdi module: resolve targets, build, lint, and
-  target_name] [--quick]                                       test in one command
+  valdi agent-check [--module module_name] [--target           (experimental) Validate a Valdi module: resolve
+  target_name] [--quick]                                       targets, build, lint, and test in one command
   valdi analyze <command>                                      Analyze Valdi modules — component duplication, patterns,
                                                                health
   valdi preview <component>                                    Preview a Valdi component in a macOS window
   valdi profile <command>                                      Capture a CPU profile from the Hermes JS runtime
-  valdi web-hotreload --target <bazel-target>                  Start a Valdi web playground with hot module reload
+  valdi web-hotreload --target <bazel-target>                  (experimental) Start a Valdi web playground with hot
+                                                               module reload
 
 Options:
   --debug    Run with debug logging                            [boolean] [default: false]
@@ -269,7 +270,7 @@ valdi doctor --project --framework --json
 > Run `valdi doctor` if you encounter setup issues or build failures. It will identify common problems and suggest solutions.<br></br>
 
 `valdi agent-check [--module module_name] [--target target_name] [--quick] [--json]`\
-Validate a Valdi module in one command: resolves the module's targets, then builds, lints, and runs its tests. Designed for AI coding agents and quick pre-commit checks.
+Experimental. Validate a Valdi module in one command: resolves the module's targets, then builds, lints, and runs its tests. Designed for AI coding agents and quick pre-commit checks.
 
 Options:
 - `--module`: Name of the Valdi module to validate
@@ -310,7 +311,7 @@ Options:
 - `--context`: JS context ID to profile; auto-selected if only one<br></br>
 
 `valdi web-hotreload --target <bazel-target>`\
-Start a Valdi web playground with hot module reload (webpack-dev-server). Pass the Bazel label of the playground `:dev` target created by `valdi_web_playground(hmr_config = ...)` (defined in `tools/valdi_web_devtools/valdi_web_playground.bzl`), for example `//experiments/helloworld_playground:dev`.<br></br>
+Experimental. Start a Valdi web playground with hot module reload (webpack-dev-server). Pass the Bazel label of the playground `:dev` target created by `valdi_web_playground(hmr_config = ...)` (defined in `tools/valdi_web_devtools/valdi_web_playground.bzl`), for example `//experiments/helloworld_playground:dev`.<br></br>
 
 `valdi log`\
 Displays and streams the Valdi logs. Will prompt user for selection if multiple logs are detected. The list of logs are ordered by descending modification time, with newest entries on the top.

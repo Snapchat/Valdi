@@ -26,7 +26,7 @@ These are covered by the compatibility promise:
 
 These are **not** public API and can change in any release:
 
-- Anything marked experimental, beta, or internal-only, and anything undocumented.
+- Anything marked experimental, beta, or internal-only, and anything undocumented. Something is marked experimental by an `@experimental` (or `@internal`) tag in its TypeScript docs, an "Experimental" note at the top of its documentation page, or "(experimental)" in CLI help.
 - Anything under an `internal` path or prefixed with `_`.
 - Compiler output format and generated code layout, beyond what apps call directly.
 - Exact error message text, log output, and performance characteristics.
