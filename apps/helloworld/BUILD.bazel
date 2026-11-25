@@ -42,8 +42,10 @@ kt_android_library(
         # app's Kotlin module deps) and the AAR holding libvaldi.so.
         ":hello_world_android_aar_import",
         ":hello_world_android_src",
+        "//apps/helloworld/text_binding_fixture",
         "//valdi:valdi_android_test_runtime",
         "//valdi:valdi_android_test_support",
+        "//valdi:valdi_java",
         "@test_mvn//:androidx_test_core",
         "@test_mvn//:androidx_test_espresso_espresso_core",
         "@test_mvn//:androidx_test_ext_junit",
