@@ -81,6 +81,12 @@ if ! grep -q 'github.com/Snapchat/Valdi' "$CHECK_FILE"; then
 fi
 echo "$CHECK_FILE references public GitHub (remote, not local) ✓"
 
+# `valdi hotreload` runs this tool from the bootstrapped app; it fails at startup if runfiles are broken.
+# The app is pinned to the last published tag, which predates fixes in this checkout, so build @valdi
+# from the checkout under test (the PR on CI, the tag itself at release time).
+echo "Running clientsql toolchain..."
+bazel run --override_module=valdi="$OPEN_SOURCE_DIR" @valdi//compiler/clientsql:clientsql_toolchain -- -version
+
 # Build and test
 if [[ -z "${SKIP_BUILD:-}" ]]; then
   echo "Building iOS app..."

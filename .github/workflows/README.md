@@ -63,7 +63,7 @@ The `release-test.yml` workflow verifies that the **bleeding edge (main branch)*
 ### When it runs
 
 - **On release**: When a GitHub release is published
-- **On version tags**: Push `v*` or `beta-*` (e.g. `v1.0.1`, `beta-0.0.2`)
+- **On version tags**: Push `v*`, `beta-*` or a bare version `[0-9]*` (e.g. `v1.0.1`, `beta-0.0.2`, `1.0.0`)
 - **On PR**: When bootstrap/release-test files change (`npm_modules/cli` bootstrap, `tools/ci/release_test.sh`, or this workflow)
 
 ### Running locally

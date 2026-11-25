@@ -9,6 +9,7 @@ on:
     tags:
       - 'v*'
       - 'beta-*'
+      - '[0-9]*'
   pull_request:
     paths:
       - 'npm_modules/cli/src/commands/bootstrap.ts'
