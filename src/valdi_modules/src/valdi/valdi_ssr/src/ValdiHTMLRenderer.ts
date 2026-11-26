@@ -11,6 +11,11 @@ let rendererIdSequence = 0;
 
 export type { IValdiHTMLRendererListener } from './IValdiHTMLRendererListener';
 
+/**
+ * Renders a Valdi component against a server-side DOM and serializes it as HTML.
+ *
+ * @experimental Server-side rendering is a prototype and its APIs may change in any release.
+ */
 // The defaults mirror IComponent<ViewModel = any, Context = any>.
 export class ValdiHTMLRenderer<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
