@@ -75,7 +75,7 @@ def valdi_module(
         disable_code_coverage = False,
         disable_dependency_verification = False,
         disable_hotreload = False,
-        visibility = visibility,
+        visibility = None,
         ios_language = "objc",
         ios_generated_context_factories = [],
         ios_deps = [],
@@ -135,7 +135,7 @@ def valdi_module(
         downloadable_sources: Flag to indicate if the module sources are downloaded remotely or bundled with the module.
         compilation_mode: The JavaScript compilation mode of the valdi module. Can be "js_bytecode", "native" or "js".
         no_compiled_valdimodule_output: Flag to indicate that the module doesn't produce compiled valdi module output.
-        visibility: The visibility of the Bazel target
+        visibility: The visibility of the generated targets. Defaults to the package's default_visibility.
         ios_language: The language of the iOS target: "objc", "swift" or "objc, swift".
         native_deps: C++ deps for the module's _desktop native target (SnapDrawing path; macOS and Linux).
         macos_deps: Obj-C/C++ deps for the module's _desktop native target on macOS only (e.g. NSOpenPanel). Ignored on Linux.
