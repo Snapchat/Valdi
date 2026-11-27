@@ -1,6 +1,9 @@
 ---
-title: Server-side rendering prototype
+title: Server-side rendering (experimental)
 ---
+
+> [!WARNING]
+> **Experimental.** Server-side rendering is a prototype and its APIs may change in any release.
 
 The `valdi_ssr` module runs the normal Valdi Web renderer against a server-side
 DOM and serializes the resulting tree as HTML. It supports an initial response
