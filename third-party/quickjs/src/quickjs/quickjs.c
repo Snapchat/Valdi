@@ -24739,8 +24739,7 @@ static __exception int js_parse_for_in_of(JSParseState* s, int label_name, BOOL 
     JS_FreeAtom(ctx, var_name);
 
     if (token_is_pseudo_keyword(s, JS_ATOM_of)) {
-        break_entry.has_iterator = is_for_of = TRUE;
-        break_entry.drop_count += 2;
+        is_for_of = TRUE;
         if (has_initializer)
             goto initializer_error;
     } else if (s->token.val == TOK_IN) {
@@ -24767,6 +24766,11 @@ static __exception int js_parse_for_in_of(JSParseState* s, int label_name, BOOL 
        the TDZ values are in the closures */
     close_scopes(s, s->cur_func->scope_level, block_scope_level);
     if (is_for_of) {
+        /* set has_iterator after the iterable expression is parsed so
+           that a yield in the expression does not try to close a
+           not-yet-created iterator */
+        break_entry.has_iterator = TRUE;
+        break_entry.drop_count += 2;
         if (is_async)
             emit_op(s, OP_for_await_of_start);
         else
