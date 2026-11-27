@@ -42,6 +42,11 @@ export class ValdiSSRRequestError extends Error {
   }
 }
 
+/**
+ * Routes HTTP requests to Valdi components and responds with server-rendered HTML.
+ *
+ * @experimental Server-side rendering is a prototype and its APIs may change in any release.
+ */
 export class ValdiSSRRouter {
   private readonly routes: { [path: string]: ValdiSSRRoute | undefined } = {};
   private readonly server: HTTPServer;

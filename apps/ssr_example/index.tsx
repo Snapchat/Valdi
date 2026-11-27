@@ -1,3 +1,4 @@
+// Experimental: server-side rendering is a prototype and its APIs may change in any release.
 import { Component } from 'valdi_core/src/Component';
 import { ValdiSSRRouter } from 'valdi_ssr/src/ValdiSSRRouter';
 

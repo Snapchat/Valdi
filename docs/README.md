@@ -96,7 +96,7 @@
  - [Putting a change behind a flag](./docs/workflow-flagging-changes.md)
  - [Your pull request got a hot-systems comment](./docs/workflow-hot-systems-comment.md)
  - [Web development](./docs/workflow-web-development.md)
- - [Server-side rendering prototype](./docs/workflow-server-side-rendering.md)
+ - [Server-side rendering (experimental)](./docs/workflow-server-side-rendering.md)
  - [Hermes Debugger](./docs/workflow-hermes-debugger.md)
  - [Disk Management](./docs/workflow-disk.md)
 
@@ -106,7 +106,7 @@
  - [Managed Context Example](../apps/managed_context_example) - shared state across components
  - [Valdi GPT](../apps/valdi_gpt) - AI-driven dynamic UI rendered at runtime
  - [CLI Application Example](../apps/cli_example) - building a Valdi CLI app
- - [SSR Example](../apps/ssr_example) - static and streaming server-rendered components
+ - [SSR Example](../apps/ssr_example) - experimental static and streaming server-rendered components
  - [Benchmark](../apps/benchmark) - performance benchmarks
 
 ## Misc
